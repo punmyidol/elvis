@@ -1,0 +1,6 @@
+get info from website and "who what when where why how" keywords
+compute a word vector for the question keyword
+search web for a word vector similar to the question keyword
+tokenize to get labels for each word
+get info according to the keyword
+say the info
