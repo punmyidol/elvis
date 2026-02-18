@@ -14,7 +14,7 @@ def get_available_tools() -> List[BaseTool]:
 def call_tool(tool_call : ToolCall) -> Any:
     tools_by_name = {tool.name: tool for tool in get_available_tools()}
     Tool = tools_by_name[tool_call['name']]
-    response = tool.invoke(tool_call['args'])
+    response = Tool.invoke(tool_call['args'])
 
     print("Tool Call: ")
     pprint(tool_call)

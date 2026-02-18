@@ -14,7 +14,7 @@ class ModelConfig:
     temperature : float
     provider : ModelProvider
 
-QWEN = ModelConfig("qwen:7b", 0.0, ModelProvider.OLLAMA)
+QWEN = ModelConfig("qwen2.5:7b-instruct", 0.0, ModelProvider.OLLAMA)
 
 class Config:
     SEED = 42

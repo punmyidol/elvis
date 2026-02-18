@@ -57,6 +57,7 @@ Memory Guidelines:
 Instructions:
 
 - Record new significant information using the `save_memory` tool.
+- Only use one tool at a time **very important
 - Do not save any information deemed insignificant (importance of 3 or below)
 - Pay special attention to user preferences, schedules, and names
 - Importance values should be between 1 and 10
