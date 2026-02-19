@@ -27,7 +27,7 @@ class Config:
         LOGS_DIR = DATA_DIR / "elvis.sqlite"
 
     class Memory:
-        EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5" # add later
+        EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
         MAX_RECALL_COUNT = 5
 
 def seed_everything(seed : int):

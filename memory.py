@@ -69,6 +69,39 @@ class MemoryManager:
         documents = self.vectorstore.similarity_search(query, k=k, filter=filter_function)
         return [Memory.from_document(doc) for doc in documents]
     
+    def update_memory(self, memory_id : str, new_content : str) -> str:
+        # 1. Update DB
+        cursor = self.connection.cursor()
+        cursor.execute(
+            "UPDATE memories SET text = ? WHERE json_extract(metadata, '$.id') = ?",
+            (new_content, memory_id)
+        )
+        self.connection.commit()
+
+        # 2. Recompute embedding
+        new_embedding = self.vectorstore.embedding.embed_documents([new_content])[0]
+
+        # 3. Update vectorstore
+        # This depends on SQLiteVec API; you may need to remove and re-add
+        self.vectorstore.delete(ids=[memory_id])
+        doc = Document(page_content=new_content, metadata={"id": memory_id})
+        self.vectorstore.add_documents([doc])
+        
+        return f"Memory: {memory_id} updated successfully"
+
+    def delete_memory(self, memory_id : str) -> str:
+        cursor = self.connection.cursor()
+        cursor.execute(
+            "DELETE FROM memories WHERE json_extract(metadata, '$.id') = ?",
+            (memory_id,)
+        )
+        self.connection.commit()
+
+        # Delete from vectorstore
+        self.vectorstore.delete(ids=[memory_id])
+
+        return f"Memory: {memory_id} deleted successfully"
+
     def find_all_memories(self, user_id : str) -> List[Memory]:
         cursor = self.connection.cursor()
         cursor.execute(
@@ -78,6 +111,7 @@ class MemoryManager:
         rows = cursor.fetchall()
 
         memories = []
+        
         for row in rows:
             document = Document(page_content=row[0], metadata=json.loads(row[1]))
             memories.append(Memory.from_document(document))
@@ -86,3 +120,4 @@ class MemoryManager:
 @lru_cache(maxsize=1)
 def create_memory_manager() -> MemoryManager:
     return MemoryManager(create_db_connection())
+
