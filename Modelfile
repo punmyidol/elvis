@@ -1,5 +1,0 @@
-FROM gemma3:4b
-
-SYSTEM "Your name is Elvis."
-
-PARAMETER temperature 0.4

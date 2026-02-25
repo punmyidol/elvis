@@ -1,0 +1,8 @@
+calendar-service/
+.DS_Store
+utils/
+live-asr/
+someshi.py
+temp.py
+todo
+__pycache__/
