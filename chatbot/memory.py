@@ -1,249 +1,259 @@
 """
 elvis/memory.py
 
-SQLite-backed memory for Elvis.
-Three-tier memory model:
-  - Tier 1: Raw conversation (LangGraph checkpointer, handled in chatbot.py)
-  - Tier 2: Extracted facts — short, deduplicated, capped (this file)
-  - Tier 3: Episodic summaries (future)
+Two-scoped memory system:
+  - Shared: family-wide facts (address, pet names, house rules)
+  - Personal: per-member facts (preferences, allergies, schedules)
+
+Extraction pipeline:
+  Stage 1 — regex fast-path (deterministic, always catches names etc.)
+  Stage 2 — LLM extraction for subtler facts
 """
 
 import sqlite3
 import json
 import re
 from dataclasses import dataclass
-from typing import List
-
+from typing import List, Optional, Tuple
 from langchain_ollama import ChatOllama
-from config import DB_PATH, OLLAMA_MODEL, OLLAMA_BASE_URL
-
-MAX_MEMORIES_PER_USER = 50
-MAX_FACT_WORDS = 10
-
-# ---------------------------------------------------------------------------
-# Fast-path patterns — deterministic extraction for high-signal phrases
-# Tuple: (regex, fact_template_fn, importance, keywords_fn)
-# ---------------------------------------------------------------------------
-
-_FAST_PATH_PATTERNS = [
-    (
-        r"(?:my name is|i(?:'m| am| go by)|call me|you can call me)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)",
-        lambda m: f"User's name is {m}",
-        5,
-        lambda m: ["name", m.lower()],
-    ),
-    (
-        r"i(?:'m| am) (\d+)(?: years old)?",
-        lambda m: f"User is {m} years old",
-        4,
-        lambda m: ["age", m],
-    ),
-    (
-        r"i(?:'m| am) (?:a |an )?([a-z]+(?: [a-z]+)?(?:er|or|ist|ian|ent))\b",
-        lambda m: f"User works as a {m}",
-        4,
-        lambda m: ["job", "occupation", m],
-    ),
-    (
-        r"i (?:really )?(?:love|like|enjoy|prefer)\s+([a-z][\w\s]{2,20}?)(?:\.|,|$)",
-        lambda m: f"User likes {m.strip()}",
-        3,
-        lambda m: ["preference", "likes", m.strip().split()[0]],
-    ),
-    (
-        r"i (?:hate|dislike|don't like|do not like)\s+([a-z][\w\s]{2,20}?)(?:\.|,|$)",
-        lambda m: f"User dislikes {m.strip()}",
-        3,
-        lambda m: ["preference", "dislikes", m.strip().split()[0]],
-    ),
-    (
-        r"i(?:'m| am) (?:from|based in|living in|located in)\s+([A-Z][a-zA-Z\s,]{2,20}?)(?:\.|,|$)",
-        lambda m: f"User is from {m.strip()}",
-        3,
-        lambda m: ["location", m.strip().lower().split()[0]],
-    ),
-]
-
-# Categories that should overwrite rather than accumulate
-# Maps a keyword to the category label used for deduplication
-_SINGLETON_CATEGORIES = {
-    "name": "name",
-    "age": "age",
-    "job": "job",
-    "occupation": "job",
-    "location": "location",
-}
+from config import DB_PATH, OLLAMA_MODEL, OLLAMA_BASE_URL, MAX_MEMORIES_PER_MEMBER, MAX_FACT_WORDS, MAX_RELEVANT_MEMORIES
 
 
 @dataclass
 class Memory:
     id: int
-    user_id: str
     content: str
     importance: int
-    created_at: str
     keywords: List[str]
+    created_at: str
+    scope: str      # "personal" | "shared"
+    member_id: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Singleton categories — one entry per member max (update instead of insert)
+# ---------------------------------------------------------------------------
+
+_SINGLETON_CATEGORIES = {
+    "name": "name", "age": "age", "job": "job",
+    "occupation": "job", "location": "location",
+}
+
+# ---------------------------------------------------------------------------
+# Fast-path regex patterns
+# ---------------------------------------------------------------------------
+
+_FAST_PATH_PATTERNS = [
+    (
+        r"(?:my name is|i(?:'m| am| go by)|call me|you can call me)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)",
+        lambda m: f"User's name is {m}", 5,
+        lambda m: ["name", m.lower()],
+    ),
+    (
+        r"i(?:'m| am) (\d+)(?: years old)?",
+        lambda m: f"User is {m} years old", 4,
+        lambda m: ["age", m],
+    ),
+    (
+        r"i(?:'m| am) (?:a |an )?([a-z]+(?: [a-z]+)?(?:er|or|ist|ian|ent))\b",
+        lambda m: f"User works as a {m}", 4,
+        lambda m: ["job", "occupation", m],
+    ),
+    (
+        r"i (?:really )?(?:love|like|enjoy|prefer)\s+([a-z][\w\s]{2,20}?)(?:\.|,|$)",
+        lambda m: f"User likes {m.strip()}", 3,
+        lambda m: ["preference", "likes", m.strip().split()[0]],
+    ),
+    (
+        r"i (?:hate|dislike|don't like|do not like)\s+([a-z][\w\s]{2,20}?)(?:\.|,|$)",
+        lambda m: f"User dislikes {m.strip()}", 3,
+        lambda m: ["preference", "dislikes", m.strip().split()[0]],
+    ),
+    (
+        r"i(?:'m| am) (?:from|based in|living in|located in)\s+([A-Z][a-zA-Z\s,]{2,20}?)(?:\.|,|$)",
+        lambda m: f"User is from {m.strip()}", 3,
+        lambda m: ["location", m.strip().lower().split()[0]],
+    ),
+    (
+        r"(?:we |our family |the family )?(?:lives?|live) (?:at|in|on)\s+(.{5,40}?)(?:\.|,|$)",
+        lambda m: f"Family lives at {m.strip()}", 5,
+        lambda m: ["address", "home", "location"],
+    ),
+    (
+        r"(?:our |the )?(?:dog|cat|pet)(?:'s name)? is\s+([A-Z][a-z]+)",
+        lambda m: f"Family pet's name is {m}", 4,
+        lambda m: ["pet", m.lower()],
+    ),
+]
 
 
 class MemoryManager:
     def __init__(self, db_path: str = DB_PATH):
         self.db_path = db_path
-        self._init_db()
         self._llm = ChatOllama(
             model=OLLAMA_MODEL,
             base_url=OLLAMA_BASE_URL,
             temperature=0,
         )
 
-    def _init_db(self):
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS memories (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id TEXT NOT NULL,
-                    content TEXT NOT NULL,
-                    importance INTEGER DEFAULT 3,
-                    keywords TEXT DEFAULT '[]',
-                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            conn.commit()
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
 
-    def _row_to_memory(self, row) -> Memory:
-        return Memory(
-            id=row[0],
-            user_id=row[1],
-            content=row[2],
-            importance=row[3],
-            created_at=row[4],
-            keywords=json.loads(row[5]),
-        )
-
-    def find_all_memories(self, user_id: str) -> List[Memory]:
-        with sqlite3.connect(self.db_path) as conn:
-            rows = conn.execute(
-                "SELECT id, user_id, content, importance, created_at, keywords "
-                "FROM memories WHERE user_id = ? ORDER BY importance DESC",
-                (user_id,),
-            ).fetchall()
-        return [self._row_to_memory(r) for r in rows]
-
-    def find_relevant_memories(self, user_id: str, query: str, top_k: int = 5) -> List[Memory]:
-        all_memories = self.find_all_memories(user_id)
-        if not all_memories:
-            return []
-
-        query_words = set(re.findall(r"\w+", query.lower()))
-
-        def relevance_score(m: Memory) -> float:
-            kw_set = set(k.lower() for k in m.keywords)
-            content_words = set(re.findall(r"\w+", m.content.lower()))
-            overlap = len(query_words & (kw_set | content_words))
-            return overlap * m.importance
-
-        return sorted(all_memories, key=relevance_score, reverse=True)[:top_k]
-
-    def _truncate_fact(self, content: str) -> str:
-        """Hard cap: no fact should exceed MAX_FACT_WORDS words."""
+    def _truncate(self, content: str) -> str:
         words = content.split()
         return " ".join(words[:MAX_FACT_WORDS]) if len(words) > MAX_FACT_WORDS else content
 
-    def _find_singleton_conflict(self, user_id: str, keywords: List[str]) -> Memory | None:
-        """
-        If the new fact belongs to a singleton category (name, age, job, location),
-        return the existing memory that should be replaced instead of duplicated.
-        """
-        all_memories = self.find_all_memories(user_id)
+    def _extract_json_array(self, raw: str) -> str:
+        raw = re.sub(r"```(?:json)?", "", raw).strip()
+        start, end = raw.find("["), raw.rfind("]")
+        if start == -1 or end == -1 or end < start:
+            return "[]"
+        return raw[start:end + 1]
+
+    # ------------------------------------------------------------------
+    # Read
+    # ------------------------------------------------------------------
+
+    def get_shared_memories(self) -> List[Memory]:
+        with sqlite3.connect(self.db_path) as conn:
+            rows = conn.execute(
+                "SELECT id, content, importance, keywords, created_at FROM shared_memories "
+                "ORDER BY importance DESC"
+            ).fetchall()
+        return [Memory(r[0], r[1], r[2], json.loads(r[3]), r[4], "shared") for r in rows]
+
+    def get_member_memories(self, member_id: str) -> List[Memory]:
+        with sqlite3.connect(self.db_path) as conn:
+            rows = conn.execute(
+                "SELECT id, content, importance, keywords, created_at FROM member_memories "
+                "WHERE member_id=? ORDER BY importance DESC",
+                (member_id,),
+            ).fetchall()
+        return [Memory(r[0], r[1], r[2], json.loads(r[3]), r[4], "personal", member_id) for r in rows]
+
+    def get_relevant_memories(self, member_id: str, query: str) -> Tuple[List[Memory], List[Memory]]:
+        """Return (relevant_shared, relevant_personal) scored by keyword overlap."""
+        query_words = set(re.findall(r"\w+", query.lower()))
+
+        def score(m: Memory) -> float:
+            kw = set(k.lower() for k in m.keywords)
+            words = set(re.findall(r"\w+", m.content.lower()))
+            return len(query_words & (kw | words)) * m.importance
+
+        shared = sorted(self.get_shared_memories(), key=score, reverse=True)[:MAX_RELEVANT_MEMORIES]
+        personal = sorted(self.get_member_memories(member_id), key=score, reverse=True)[:MAX_RELEVANT_MEMORIES]
+        return shared, personal
+
+    # ------------------------------------------------------------------
+    # Write — shared
+    # ------------------------------------------------------------------
+
+    def _shared_duplicate_exists(self, content: str) -> bool:
+        c = content.lower()
+        return any(c in m.content.lower() or m.content.lower() in c for m in self.get_shared_memories())
+
+    def save_shared_memory(self, content: str, importance: int, keywords: List[str]):
+        content = self._truncate(content)
+        if self._shared_duplicate_exists(content):
+            print(f"[Memory/shared] Skipped duplicate: {content!r}")
+            return
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                "INSERT INTO shared_memories (content, importance, keywords) VALUES (?, ?, ?)",
+                (content, importance, json.dumps(keywords)),
+            )
+            conn.commit()
+        print(f"[Memory/shared] Saved: {content!r}")
+
+    # ------------------------------------------------------------------
+    # Write — personal
+    # ------------------------------------------------------------------
+
+    def _find_singleton_conflict(self, member_id: str, keywords: List[str]) -> Optional[Memory]:
         for kw in keywords:
-            category = _SINGLETON_CATEGORIES.get(kw.lower())
-            if not category:
+            cat = _SINGLETON_CATEGORIES.get(kw.lower())
+            if not cat:
                 continue
-            for m in all_memories:
-                if any(_SINGLETON_CATEGORIES.get(k.lower()) == category for k in m.keywords):
+            for m in self.get_member_memories(member_id):
+                if any(_SINGLETON_CATEGORIES.get(k.lower()) == cat for k in m.keywords):
                     return m
         return None
 
-    def _evict_if_needed(self, user_id: str):
-        """Remove lowest-importance memories when over the cap."""
-        all_memories = self.find_all_memories(user_id)
-        if len(all_memories) <= MAX_MEMORIES_PER_USER:
+    def _member_duplicate_exists(self, member_id: str, content: str) -> bool:
+        c = content.lower()
+        return any(c in m.content.lower() or m.content.lower() in c for m in self.get_member_memories(member_id))
+
+    def _evict_if_needed(self, member_id: str):
+        memories = self.get_member_memories(member_id)
+        if len(memories) <= MAX_MEMORIES_PER_MEMBER:
             return
-        # Already sorted importance DESC — evict from the tail
-        to_evict = all_memories[MAX_MEMORIES_PER_USER:]
+        to_evict = memories[MAX_MEMORIES_PER_MEMBER:]
         with sqlite3.connect(self.db_path) as conn:
             for m in to_evict:
-                conn.execute("DELETE FROM memories WHERE id = ?", (m.id,))
+                conn.execute("DELETE FROM member_memories WHERE id=?", (m.id,))
             conn.commit()
-        print(f"[Memory] Evicted {len(to_evict)} low-importance memories.")
+        print(f"[Memory] Evicted {len(to_evict)} memories for {member_id}")
 
-    def save_memory(self, user_id: str, content: str, importance: int, keywords: List[str]):
-        content = self._truncate_fact(content)
+    def save_member_memory(self, member_id: str, content: str, importance: int, keywords: List[str]):
+        content = self._truncate(content)
 
-        # Check for singleton conflict (e.g. a second name entry)
-        conflict = self._find_singleton_conflict(user_id, keywords)
+        conflict = self._find_singleton_conflict(member_id, keywords)
         if conflict:
-            print(f"[Memory] Updating '{conflict.content}' → '{content}'")
+            print(f"[Memory] Updating: {conflict.content!r} → {content!r}")
             with sqlite3.connect(self.db_path) as conn:
                 conn.execute(
-                    "UPDATE memories SET content=?, importance=?, keywords=? WHERE id=?",
+                    "UPDATE member_memories SET content=?, importance=?, keywords=? WHERE id=?",
                     (content, importance, json.dumps(keywords), conflict.id),
                 )
                 conn.commit()
             return
 
-        # Check for near-duplicate by content
-        all_memories = self.find_all_memories(user_id)
-        content_lower = content.lower()
-        if any(content_lower in m.content.lower() or m.content.lower() in content_lower for m in all_memories):
-            print(f"[Memory] Skipped duplicate: {content!r}")
+        if self._member_duplicate_exists(member_id, content):
+            print(f"[Memory/personal] Skipped duplicate: {content!r}")
             return
 
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
-                "INSERT INTO memories (user_id, content, importance, keywords) VALUES (?, ?, ?, ?)",
-                (user_id, content, importance, json.dumps(keywords)),
+                "INSERT INTO member_memories (member_id, content, importance, keywords) VALUES (?, ?, ?, ?)",
+                (member_id, content, importance, json.dumps(keywords)),
             )
             conn.commit()
+        self._evict_if_needed(member_id)
+        print(f"[Memory/personal] Saved for {member_id}: {content!r}")
 
-        self._evict_if_needed(user_id)
-        print(f"[Memory] Saved: {content!r} (importance={importance})")
-
-    def delete_memory(self, memory_id: int):
+    def delete_memory(self, memory_id: int, scope: str):
+        table = "shared_memories" if scope == "shared" else "member_memories"
         with sqlite3.connect(self.db_path) as conn:
-            conn.execute("DELETE FROM memories WHERE id = ?", (memory_id,))
+            conn.execute(f"DELETE FROM {table} WHERE id=?", (memory_id,))
             conn.commit()
 
-    def _fast_path_extract(self, user_id: str, text: str) -> List[str]:
+    # ------------------------------------------------------------------
+    # Extraction pipeline
+    # ------------------------------------------------------------------
+
+    def _fast_path_extract(self, member_id: str, text: str) -> List[str]:
+        """Deterministic regex extraction. Returns list of saved content strings."""
         saved = []
+        is_shared_pattern = lambda kws: "address" in kws or "pet" in kws
+
         for pattern, content_fn, importance, keywords_fn in _FAST_PATH_PATTERNS:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
                 value = match.group(1).strip()
                 content = content_fn(value)
                 keywords = keywords_fn(value)
-                self.save_memory(user_id, content, importance, keywords)
+                if is_shared_pattern(keywords):
+                    self.save_shared_memory(content, importance, keywords)
+                else:
+                    self.save_member_memory(member_id, content, importance, keywords)
                 saved.append(content)
         return saved
 
-    def _extract_json_array(self, raw: str) -> str:
-        raw = re.sub(r"```(?:json)?", "", raw).strip()
-        start = raw.find("[")
-        end = raw.rfind("]")
-        if start == -1 or end == -1 or end < start:
-            return "[]"
-        return raw[start:end + 1]
+    def extract_and_save_memories(self, member_id: str, human_message: str, ai_response: str):
+        """Two-stage extraction: regex fast-path then LLM for subtler facts."""
+        fast_saved = self._fast_path_extract(member_id, human_message)
 
-    def extract_and_save_memories(self, user_id: str, human_message: str, ai_response: str):
-        """
-        Two-stage extraction:
-          Stage 1 — regex fast-path (deterministic, runs first)
-          Stage 2 — LLM extraction for subtler facts
-        Facts are truncated to MAX_FACT_WORDS, deduplicated, and capped at MAX_MEMORIES_PER_USER.
-        """
-        # Stage 1: fast-path
-        fast_saved = self._fast_path_extract(user_id, human_message)
-
-        # Stage 2: LLM for subtler facts
         prompt = f"""Extract personal facts about the user from what they said.
 Be liberal — save anything personally meaningful.
 
@@ -252,11 +262,12 @@ User said: "{human_message}"
 Rules:
 - Each fact must be {MAX_FACT_WORDS} words or fewer
 - Use third person: "User likes X", "User is from Y"
+- If the fact is about the whole family (address, pets, shared rules), prefix with "Family:"
 - Skip facts already captured: {json.dumps(fast_saved)}
 - Skip greetings, filler, or anything not personally meaningful
 
 Reply ONLY with a raw JSON array. No explanation. No markdown.
-Format: [{{"content": "...", "importance": 1-5, "keywords": ["...", "..."]}}]
+Format: [{{"content": "...", "importance": 1-5, "keywords": ["...", "..."], "scope": "personal|shared"}}]
 If nothing new: []
 
 JSON array:"""
@@ -265,16 +276,19 @@ JSON array:"""
             response = self._llm.invoke(prompt)
             raw = response.content.strip()
             print(f"[Memory] LLM raw: {raw!r}")
-
-            cleaned = self._extract_json_array(raw)
-            facts = json.loads(cleaned)
+            facts = json.loads(self._extract_json_array(raw))
 
             for fact in facts:
                 content = fact.get("content", "").strip()
                 importance = int(fact.get("importance", 3))
                 keywords = fact.get("keywords", [])
-                if content:
-                    self.save_memory(user_id, content, importance, keywords)
+                scope = fact.get("scope", "personal")
+                if not content:
+                    continue
+                if scope == "shared":
+                    self.save_shared_memory(content, importance, keywords)
+                else:
+                    self.save_member_memory(member_id, content, importance, keywords)
 
         except json.JSONDecodeError as e:
             print(f"[Memory] JSON parse error: {e}")

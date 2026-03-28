@@ -2,23 +2,51 @@
 elvis/main.py
 
 Streamlit UI for Elvis.
+- Filler user_id = "parent_1" (identity selection deferred)
+- Sidebar: memories, calendar status, news cache status
+- APScheduler starts on first load
 """
 
 import random
-from typing import List
-
 import streamlit as st
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 
-from chatbot import ask_chatbot, chat_workflow
+from family import init_db, seed_defaults, get_all_members, get_member
 from memory import create_memory_manager
-from config import CHATBOT_INTRO
+from calendar import sync_calendar, get_last_sync_time
+from news import is_news_cached_today
+from chatbot import ask_chatbot, get_workflow
+from config import CHATBOT_INTRO, CHATBOT_NAME, DB_PATH
 
 LOADING_MESSAGES = [
-    "Finding the answer...",
-    "Searching through memories...",
     "Thinking...",
+    "Checking my notes...",
+    "On it...",
+    "Let me look into that...",
 ]
+
+# ---------------------------------------------------------------------------
+# One-time startup (runs once per Streamlit session)
+# ---------------------------------------------------------------------------
+
+@st.cache_resource
+def startup():
+    """Initialise DB, seed defaults, sync calendar, start scheduler."""
+    init_db(DB_PATH)
+    seed_defaults(DB_PATH)
+
+    # Initial calendar sync (best-effort — skipped if credentials missing)
+    sync_calendar(DB_PATH)
+
+    # Start background scheduler
+    from scheduler import create_scheduler
+    scheduler = create_scheduler(db_path=DB_PATH)
+    scheduler.start()
+    print("[Elvis] Scheduler started.")
+    return True
+
+
+startup()
 
 # ---------------------------------------------------------------------------
 # Page config
@@ -39,68 +67,99 @@ st.subheader("Your personal home assistant")
 # ---------------------------------------------------------------------------
 
 if "thread_id" not in st.session_state:
-    st.session_state.thread_id = "1"
-if "user_id" not in st.session_state:
-    st.session_state.user_id = "1"
+    st.session_state.thread_id = "default"
+
+# Filler identity — will be replaced when member selection is built
+CURRENT_MEMBER_ID = "parent_1"
 
 app_config = {
     "configurable": {
-        "user_id": st.session_state.user_id,
+        "user_id": CURRENT_MEMBER_ID,
         "thread_id": st.session_state.thread_id,
     }
 }
+
+member = get_member(CURRENT_MEMBER_ID)
+member_name = member.name if member else "User"
 
 # ---------------------------------------------------------------------------
 # Sidebar
 # ---------------------------------------------------------------------------
 
-memory_manager = create_memory_manager()
-memories = memory_manager.find_all_memories(app_config["configurable"]["user_id"])
+mm = create_memory_manager()
+shared_mems = mm.get_shared_memories()
+personal_mems = mm.get_member_memories(CURRENT_MEMBER_ID)
 
 with st.sidebar:
-    st.markdown("## ⚙️ Settings")
-    with st.form("conversation_id_form"):
+    st.markdown(f"## 👤 {member_name}")
+    st.caption(f"ID: `{CURRENT_MEMBER_ID}`")
+
+    # Conversation switcher
+    with st.form("thread_form"):
         st.text_input("Conversation ID", key="thread_id")
-        if st.form_submit_button("Switch conversation"):
-            st.toast(f"Switched to conversation: {st.session_state.thread_id}", icon="📖")
+        if st.form_submit_button("Switch"):
+            st.toast(f"Switched to: {st.session_state.thread_id}", icon="📖")
             st.rerun()
 
     st.divider()
 
-    if memories:
-        st.markdown("## 🧠 Memories")
-        for memory in memories:
-            col1, col2 = st.columns([4, 1])
+    # Calendar status
+    last_sync = get_last_sync_time(DB_PATH)
+    st.markdown("## 📅 Calendar")
+    st.caption(f"Last synced: {last_sync or 'Never'}")
+
+    # News status
+    st.markdown("## 📰 News")
+    cached = is_news_cached_today(CURRENT_MEMBER_ID, DB_PATH)
+    st.caption("✅ Today's news cached" if cached else "⏳ News refreshes at midnight")
+
+    st.divider()
+
+    # Shared memories
+    if shared_mems:
+        st.markdown("## 🏠 Family memories")
+        for m in shared_mems:
+            col1, col2 = st.columns([5, 1])
             with col1:
-                st.markdown(f"- {memory.content} *(importance: {memory.importance})*")
+                st.caption(f"{m.content} *(★{m.importance})*")
             with col2:
-                if st.button("🗑️", key=f"del_{memory.id}"):
-                    memory_manager.delete_memory(memory.id)
+                if st.button("🗑", key=f"shared_{m.id}"):
+                    mm.delete_memory(m.id, "shared")
                     st.rerun()
-    else:
-        st.markdown("## 🧠 Memories")
+
+    # Personal memories
+    if personal_mems:
+        st.markdown(f"## 🧠 {member_name}'s memories")
+        for m in personal_mems:
+            col1, col2 = st.columns([5, 1])
+            with col1:
+                st.caption(f"{m.content} *(★{m.importance})*")
+            with col2:
+                if st.button("🗑", key=f"personal_{m.id}"):
+                    mm.delete_memory(m.id, "personal")
+                    st.rerun()
+
+    if not shared_mems and not personal_mems:
         st.caption("No memories yet. Start chatting!")
 
 # ---------------------------------------------------------------------------
 # Welcome message
 # ---------------------------------------------------------------------------
 
+has_memories = bool(shared_mems or personal_mems)
 welcome_message = AIMessage(
-    content=f"{CHATBOT_INTRO} Nice to see you again! How can I help?"
-    if memories
+    content=f"{CHATBOT_INTRO} Nice to see you, {member_name}! How can I help?"
+    if has_memories
     else f"{CHATBOT_INTRO} What's your name?"
 )
 
 # ---------------------------------------------------------------------------
-# Chat history from checkpointer
+# Chat history
 # ---------------------------------------------------------------------------
 
-state = chat_workflow.get_state(app_config)
-chat_messages: List[BaseMessage] = list(state.values.get("messages", [])) if state.values else [welcome_message]
-
-# ---------------------------------------------------------------------------
-# Render existing messages
-# ---------------------------------------------------------------------------
+workflow = get_workflow()
+state = workflow.get_state(app_config)
+chat_messages = list(state.values.get("messages", [])) if state.values else [welcome_message]
 
 for message in chat_messages:
     is_user = isinstance(message, HumanMessage)
@@ -108,11 +167,11 @@ for message in chat_messages:
         st.markdown(message.content)
 
 # ---------------------------------------------------------------------------
-# Handle new input
+# Handle input
 # ---------------------------------------------------------------------------
 
-def create_history(prompt: str) -> List[BaseMessage]:
-    state = chat_workflow.get_state(app_config)
+def create_history(prompt: str):
+    state = workflow.get_state(app_config)
     is_new = not state.values
     messages = [welcome_message] if is_new else []
     return messages + [HumanMessage(prompt)]
@@ -123,10 +182,10 @@ if prompt := st.chat_input("Type your message..."):
         st.markdown(prompt)
 
     with st.chat_message("assistant", avatar="🤖"):
-        message_placeholder = st.empty()
-        message_placeholder.status(random.choice(LOADING_MESSAGES), state="running")
+        placeholder = st.empty()
+        placeholder.status(random.choice(LOADING_MESSAGES), state="running")
 
         full_response = ""
         for chunk in ask_chatbot(create_history(prompt), app_config):
             full_response += chunk
-            message_placeholder.markdown(full_response)
+            placeholder.markdown(full_response)
