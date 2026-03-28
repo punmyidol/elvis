@@ -1,0 +1,5 @@
+OLLAMA_MODEL = "qwen2.5:14b"
+OLLAMA_BASE_URL = "http://localhost:11434"
+DB_PATH = "elvis_memory.db"
+CHATBOT_NAME = "Elvis"
+CHATBOT_INTRO = "Hi, I am Elvis, your personal home assistant."
