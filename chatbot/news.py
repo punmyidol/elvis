@@ -14,7 +14,7 @@ from datetime import date, timedelta
 from typing import List
 from dataclasses import dataclass
 
-from duckduckgo_search import DDGS
+from ddgs import DDGS
 from langchain_ollama import ChatOllama
 
 from config import (

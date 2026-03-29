@@ -3,7 +3,7 @@ langchain-core
 langchain-ollama
 langgraph
 langgraph-checkpoint-sqlite
-duckduckgo-search
+ddgs
 pdfplumber
 caldav
 apscheduler
