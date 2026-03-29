@@ -13,7 +13,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 
 from family import init_db, seed_defaults, get_all_members, get_member
 from memory import create_memory_manager
-from calendar import sync_calendar, get_last_sync_time
+from elvis_calendar import sync_calendar, get_last_sync_time
 from news import is_news_cached_today
 from chatbot import ask_chatbot, get_workflow
 from config import CHATBOT_INTRO, CHATBOT_NAME, DB_PATH

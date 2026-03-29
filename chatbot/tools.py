@@ -61,7 +61,7 @@ def get_calendar(query: str, member_id: str = "", days_ahead: int = 7) -> str:
     Use this for questions about schedules, upcoming events, or appointments.
     Optionally filter by member_id. days_ahead controls how far to look forward.
     """
-    from calendar import get_events_for_range, format_events_for_llm
+    from elvis_calendar import get_events_for_range, format_events_for_llm
     start = datetime.now()
     end = start + timedelta(days=days_ahead)
     events = get_events_for_range(start, end, member_id or None)

@@ -24,7 +24,7 @@ def create_scheduler(db_path: str = None) -> BackgroundScheduler:
     Importing news/calendar here (not at module level) avoids circular imports.
     """
     from news import refresh_all_members
-    from calendar import sync_calendar
+    from elvis_calendar import sync_calendar
 
     scheduler = BackgroundScheduler(timezone="Asia/Bangkok")  # adjust to your timezone
 
