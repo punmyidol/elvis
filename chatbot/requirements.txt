@@ -4,6 +4,7 @@ langchain-ollama
 langgraph
 langgraph-checkpoint-sqlite
 ddgs
+feedparser
 pdfplumber
 caldav
 apscheduler
