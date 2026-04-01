@@ -8,3 +8,4 @@ feedparser
 pdfplumber
 caldav
 apscheduler
+pandas

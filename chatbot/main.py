@@ -4,6 +4,7 @@ elvis/main.py
 Streamlit UI for Elvis.
 - Filler user_id = "parent_1" (identity selection deferred)
 - Sidebar: memories, calendar status, news cache status
+- Image upload support for multimodal queries (qwen3-vl)
 - APScheduler starts on first load
 """
 
@@ -11,12 +12,12 @@ import random
 import streamlit as st
 from langchain_core.messages import AIMessage, HumanMessage
 
-from family import init_db, seed_defaults, get_all_members, get_member
-from memory import create_memory_manager
-from elvis_calendar import sync_calendar, get_last_sync_time
-from news import is_news_cached_today
-from chatbot import ask_chatbot, get_workflow
-from config import CHATBOT_INTRO, CHATBOT_NAME, DB_PATH
+from core.family import init_db, seed_defaults, get_member
+from agent.memory import create_memory_manager
+from services.elvis_calendar import sync_calendar, get_last_sync_time
+from services.news import is_news_cached_today
+from agent.chatbot import ask_chatbot, get_workflow
+from core.config import CHATBOT_INTRO, CHATBOT_NAME, DB_PATH
 
 LOADING_MESSAGES = [
     "Thinking...",
@@ -26,7 +27,7 @@ LOADING_MESSAGES = [
 ]
 
 # ---------------------------------------------------------------------------
-# One-time startup (runs once per Streamlit session)
+# One-time startup
 # ---------------------------------------------------------------------------
 
 @st.cache_resource
@@ -34,12 +35,8 @@ def startup():
     """Initialise DB, seed defaults, sync calendar, start scheduler."""
     init_db(DB_PATH)
     seed_defaults(DB_PATH)
-
-    # Initial calendar sync (best-effort — skipped if credentials missing)
     sync_calendar(DB_PATH)
-
-    # Start background scheduler
-    from scheduler import create_scheduler
+    from core.scheduler import create_scheduler
     scheduler = create_scheduler(db_path=DB_PATH)
     scheduler.start()
     print("[Elvis] Scheduler started.")
@@ -69,6 +66,12 @@ st.subheader("Your personal home assistant")
 if "thread_id" not in st.session_state:
     st.session_state.thread_id = "default"
 
+if "pending_image_bytes" not in st.session_state:
+    st.session_state.pending_image_bytes = None
+
+if "pending_image_mime" not in st.session_state:
+    st.session_state.pending_image_mime = None
+
 # Filler identity — will be replaced when member selection is built
 CURRENT_MEMBER_ID = "parent_1"
 
@@ -94,7 +97,6 @@ with st.sidebar:
     st.markdown(f"## 👤 {member_name}")
     st.caption(f"ID: `{CURRENT_MEMBER_ID}`")
 
-    # Conversation switcher
     with st.form("thread_form"):
         st.text_input("Conversation ID", key="thread_id")
         if st.form_submit_button("Switch"):
@@ -103,19 +105,16 @@ with st.sidebar:
 
     st.divider()
 
-    # Calendar status
     last_sync = get_last_sync_time(DB_PATH)
     st.markdown("## 📅 Calendar")
     st.caption(f"Last synced: {last_sync or 'Never'}")
 
-    # News status
     st.markdown("## 📰 News")
     cached = is_news_cached_today(CURRENT_MEMBER_ID, DB_PATH)
     st.caption("✅ Today's news cached" if cached else "⏳ News refreshes at midnight")
 
     st.divider()
 
-    # Shared memories
     if shared_mems:
         st.markdown("## 🏠 Family memories")
         for m in shared_mems:
@@ -127,7 +126,6 @@ with st.sidebar:
                     mm.delete_memory(m.id, "shared")
                     st.rerun()
 
-    # Personal memories
     if personal_mems:
         st.markdown(f"## 🧠 {member_name}'s memories")
         for m in personal_mems:
@@ -164,7 +162,33 @@ chat_messages = list(state.values.get("messages", [])) if state.values else [wel
 for message in chat_messages:
     is_user = isinstance(message, HumanMessage)
     with st.chat_message("user" if is_user else "assistant", avatar="🧑" if is_user else "🤖"):
-        st.markdown(message.content)
+        # HumanMessage content may be a list (multimodal) or a plain string
+        if isinstance(message.content, list):
+            for block in message.content:
+                if block.get("type") == "text":
+                    st.markdown(block["text"])
+                elif block.get("type") == "image_url":
+                    url = block["image_url"]["url"]
+                    st.image(url, width=250)
+        else:
+            st.markdown(message.content)
+
+# ---------------------------------------------------------------------------
+# Image uploader
+# ---------------------------------------------------------------------------
+
+uploaded_file = st.file_uploader(
+    "Attach an image (optional)",
+    type=["jpg", "jpeg", "png", "webp"],
+    label_visibility="visible",
+)
+
+# Capture image into session state when uploaded so it survives the rerun
+# that happens when the user hits send
+if uploaded_file is not None:
+    st.session_state.pending_image_bytes = uploaded_file.read()
+    st.session_state.pending_image_mime = uploaded_file.type or "image/jpeg"
+    st.image(st.session_state.pending_image_bytes, width=200, caption="Attached image")
 
 # ---------------------------------------------------------------------------
 # Handle input
@@ -178,14 +202,27 @@ def create_history(prompt: str):
 
 
 if prompt := st.chat_input("Type your message..."):
+    # Grab and clear pending image before Streamlit reruns
+    image_bytes = st.session_state.pending_image_bytes
+    image_mime = st.session_state.pending_image_mime or "image/jpeg"
+    st.session_state.pending_image_bytes = None
+    st.session_state.pending_image_mime = None
+
     with st.chat_message("user", avatar="🧑"):
         st.markdown(prompt)
+        if image_bytes:
+            st.image(image_bytes, width=200)
 
     with st.chat_message("assistant", avatar="🤖"):
         placeholder = st.empty()
         placeholder.status(random.choice(LOADING_MESSAGES), state="running")
 
         full_response = ""
-        for chunk in ask_chatbot(create_history(prompt), app_config):
+        for chunk in ask_chatbot(
+            create_history(prompt),
+            app_config,
+            image_bytes=image_bytes,
+            image_mime=image_mime,
+        ):
             full_response += chunk
             placeholder.markdown(full_response)
