@@ -52,7 +52,7 @@ def get_llm():
         base_url=OLLAMA_BASE_URL,
         temperature=0.5,
         streaming=True,
-        think=False,  # ← disables thinking mode in qwen3
+        reasoning=False,
     ).bind_tools(ELVIS_TOOLS)
 
 

@@ -9,3 +9,8 @@ __pycache__/
 data/
 .env
 venv/
+elvis_memory.db
+elvis.db
+elvis.db-shm
+elvis.db-wal
+rag.db

@@ -1,0 +1,80 @@
+Personal Details
+
+Name: Pon Chalermpong
+Date of Birth: 9 March 2008
+Nationality: Thai
+Email: pon.chalermpong@gmail.com
+
+Languages Spoken
+
+English - Fluent 		Thai - Fluent 		      Chinese - Intermediate
+             (TOEFL 104/120)				              (HSK 3 Mandarin Certification)
+	
+Education
+SISB Singapore International School of Bangkok, 2013-Present
+GPAX: 3.9/4.0
+SAT: 1540/1600
+AS/A-level: 4A (Computer Science, Physics, Further Maths, Pure Maths)
+IGCSE: 5A* (International Maths, Additional Maths, Physics, Biology, Chinese Studies), 3A (Chemistry, English, Economics) 
+
+Awards
+Gold Prize (from 300 contestants) - YTMF Yamaha Thailand Music Festival, Under 15 years-old, Piano Solo, 2022 and 2023
+3rd Rank Team (Topic: Blockchain) - FISF (Fudan International School of Finance) Summer Camp, 2025
+Thailand 5th Rank Certificate of Participation (from 3,000 regional competitors), SASMO Singapore and Asian Schools Math Olympiad, 2024
+Thailand 9th Rank International Academic Competition Science Bee Champion, 2025
+Silver Medal, TIMC Thailand International Virtual Music Competition Piano Solo, 2023
+Bronze Award, Duke of Edinburgh’s International Award, 2024
+Chevron Scholarship Award for Outstanding Academic Achievement, 2017-2021
+Certificate of Completion, Harvard Introduction to Computer Science Python (CS50P), 2024
+Certificate of Participation, Cambridge Science Competition, 2024
+Certificate of Participation, Oxford Climate Change Challenge, 2024
+
+Work Experience
+Baksters - Internship (July 2025)
+Led a computer vision project for motorcycle helmet detection with mentoring from Baksters for Mahidol University
+Trained "non-AI" university cameras to detect people without motorcycle helmets using YOLOv8 on a custom dataset using Roboflow and Ultralytics 
+Worked in sprints (company ethic), achieving 1 tangible goal every 2 weeks
+
+DataFirst - Data Science Internship (June 2025)
+Designed and trained a machine learning model to predict customer return dates for a tyre and motor oil chain, B-Quik
+Learned feature engineering, model training pipeline, hyperparameter tuning, and the "quirks" that come with real world data
+
+
+MIB Co. Ltd. - Internship (July 2024)
+Developed query logic using Business Activity Query (BAQ) module in Epicor software to summarize cumulative daily sales of client product lines and calculate the procurement of raw materials
+Learned to write Python code in Pycharm to combine two .csv datasets (Unit Price, Sales Volume) to generate total sales
+
+Projects and Extracurriculars
+
+Mahidol Public Safety Computer Vision Project
+Trained a custom YOLO model to detect motorcyclists who are not wearing helmets and achieved 86% accuracy
+It is expected that this project will help to increase the percentage of people wearing helmets from currently 40% to at least 75%
+AIAT/MOOC Super AI Engineer Development Program - Participant (2024-2025)
+Learned machine learning through an online course made for Thai Undergraduates interested in the field of Data Science
+Participated in 4 hackathons offered during the program, a theory exam and published a video explaining the Titanic Machine Learning problem set on Kaggle (404944-ภณ อธิบายเรื่อง Kaggle: Titanic Machine Learning)
+
+HelpingHands Student-Led Organization - Founder (Dec 2023 - Present)
+Organized one-day bake sales to raise more than 10,000 baht to UNICEF for households experiencing flooding in the south of Thailand
+Built web-app for online QR code ordering to increase sales by 60%
+Organized one-week book donation resulting in more than 1,000 books on science, maths and languages being donated to suburban schools through the Mirror Foundation Thailand
+
+RMHC Ronald McDonald House Charity (2024)
+Volunteered to raise support funds for RMHC children’s shelter by setting a donation stand at Nopparat Rajathanee Hospital
+
+SISB Student Council - Finance Department (2022 - 2024) 
+Hosted the school open house event for parents and visitors
+Volunteered to support school duties such as fund accounting from school activities and helped primary students off the cars at the drop-off area 
+
+SISB Volleyball Team - Libero (2024 - Present)
+Formed the first SISB Volleyball Team
+Participated in more than 10 friendly matches against other international and Thai schools in Bangkok
+Competed as Quarter-Finalist in the FOBISIA Volleyball Tournament 2024 (Total 27 teams)
+
+BarrierMUN (Model United Nations) - PR Department (2023 - Present)
+Developed Instagram content for the BarrierMUN, a student-led initiative dedicated to breaking the language and awareness barriers to MUNs, debate, and international awareness in Thailand
+BarrierMUN’s work has been recognized by The Diana Award (@dianaaward)
+
+
+Published Works
+404944-ภณ อธิบายเรื่อง Kaggle: Titanic Machine Learning https://www.youtube.com/watch?app=desktop&v=TqnS4R9G1kg
+Youth Illustrator for Thailand Long-Term Low Greenhouse Gas Emission Development Strategy (LT-LEDS) (Revised Version), submitted to the United Nations Framework Convention on Climate Change (UNFCCC). Retrievable from https://unfccc.int/sites/default/files/resource/Thailand%20LT-LEDS%20%28Revised%20Version%29_08Nov2022.pdf (UNFCCC, 2022, p. 36 and 39)

@@ -57,7 +57,7 @@ def get_news(member_id: str = "") -> str:
     Use this whenever someone asks about news, headlines, or what's happening today.
     Do NOT pass a member_id — it is resolved automatically.
     """
-    from news import get_news_for_member, format_news_for_llm
+    from services.news import get_news_for_member, format_news_for_llm
     resolved_id = member_id.strip() if member_id.strip() else _current_member_id
     print(f"[get_news] arg='{member_id}' resolved='{resolved_id}' _current='{_current_member_id}'")
     items = get_news_for_member(resolved_id)
@@ -77,7 +77,7 @@ def get_calendar(query: str, member_id: str = "", days_ahead: int = 7) -> str:
     days_ahead controls how far to look forward (default 7 days).
     Do NOT pass a member_id — it is resolved automatically.
     """
-    from elvis_calendar import get_events_for_range, format_events_for_llm
+    from services.elvis_calendar import get_events_for_range, format_events_for_llm
     resolved_id = member_id.strip() if member_id.strip() else _current_member_id
     start = datetime.now()
     end = start + timedelta(days=days_ahead)
@@ -96,7 +96,7 @@ def remember(fact: str, member_id: str, scope: str = "personal") -> str:
     scope: 'personal' (about this family member) or 'shared' (about the whole family).
     Use this when the user explicitly asks Elvis to remember something.
     """
-    from memory import create_memory_manager
+    from agent.memory import create_memory_manager
     mm = create_memory_manager()
     keywords = [w.lower() for w in fact.split() if len(w) > 3][:4]
     if scope == "shared":
@@ -116,7 +116,7 @@ def list_documents() -> str:
     List all documents available in the sandboxed sample-docs directory.
     Use this when the user asks "what files do I have?" or wants to see their notes.
     """
-    from documents import list_documents_logic
+    from services.documents import list_documents_logic
     return list_documents_logic()
 
 @tool
@@ -125,7 +125,7 @@ def read_document(filename: str) -> str:
     Read the contents of a specific document safely.
     Use this when the user asks to "show" or "read" a file like a note or a shopping list.
     """
-    from documents import read_document_logic
+    from services.documents import read_document_logic
     return read_document_logic(filename)
 
 @tool
@@ -134,7 +134,7 @@ def write_document(filename: str, content: str) -> str:
     Create a new file or overwrite an existing one with the given content.
     Use this to save a note, schedule, or list (e.g., "save a note that school starts at 8am").
     """
-    from documents import write_document_logic
+    from services.documents import write_document_logic
     return write_document_logic(filename, content)
 
 @tool
@@ -144,7 +144,7 @@ def delete_document(filename: str) -> str:
     WARNING: ONLY CALL THIS ON EXPLICIT USER INTENT.
     Use this only when the user says something like "delete the old shopping list".
     """
-    from documents import delete_document_logic
+    from services.documents import delete_document_logic
     return delete_document_logic(filename)
 
 @tool
@@ -153,7 +153,7 @@ def move_document(old_name: str, new_name: str) -> str:
     Rename or move a document.
     Use this when the user says something like "rename budget.csv to march-budget.csv".
     """
-    from documents import move_document_logic
+    from services.documents import move_document_logic
     return move_document_logic(old_name, new_name)
 
 
