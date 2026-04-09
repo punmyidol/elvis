@@ -8,13 +8,16 @@ import os
 # ---------------------------------------------------------------------------
 # LLM
 # ---------------------------------------------------------------------------
-OLLAMA_MODEL = os.getenv("ELVIS_MODEL", "qwen3-vl:8b")
+OLLAMA_MODEL = os.getenv("ELVIS_MODEL", "qwen2.5:7b")
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
 # ---------------------------------------------------------------------------
 # Database
 # ---------------------------------------------------------------------------
-DB_PATH = os.getenv("ELVIS_DB_PATH", "elvis.db")
+DB_PATH = os.getenv(
+    "ELVIS_DB_PATH",
+    os.path.join(os.path.dirname(__file__), "..", "..", "elvis.db")
+)
 
 # ---------------------------------------------------------------------------
 # iCloud CalDAV

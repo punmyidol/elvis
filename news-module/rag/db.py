@@ -1,11 +1,12 @@
 """
 rag/db.py
 
-sqlite-vec powered vector store — standalone, no chatbot dependencies.
+sqlite-vec powered vector store — writes into the shared elvis.db using the
+same vec_items / vec_metadata schema as the main chatbot (source_type='document').
 
-Schema:
+Schema (owned by chatbot/agent/vector_store.py):
   vec_items      — sqlite-vec virtual table (KNN over 768-dim float embeddings)
-  vec_metadata   — stores source_id, chunk_index, content per row
+  vec_metadata   — rowid, source_id, source_type, member_id, content
 """
 
 import sqlite3
@@ -23,6 +24,7 @@ from .config import EMBED_DIM, EMBED_MODEL, MAX_DISTANCE, OLLAMA_BASE_URL, TOP_K
 # ---------------------------------------------------------------------------
 
 def init_db(db_path: str) -> None:
+    """Create vec_items / vec_metadata if they don't exist yet (chatbot schema)."""
     with sqlite3.connect(db_path) as conn:
         conn.enable_load_extension(True)
         sqlite_vec.load(conn)
@@ -36,9 +38,9 @@ def init_db(db_path: str) -> None:
             CREATE TABLE IF NOT EXISTS vec_metadata (
                 rowid       INTEGER PRIMARY KEY,
                 source_id   TEXT NOT NULL,
-                chunk_index INTEGER NOT NULL DEFAULT 0,
-                content     TEXT NOT NULL,
-                UNIQUE(source_id, chunk_index)
+                source_type TEXT NOT NULL DEFAULT 'document',
+                member_id   TEXT NOT NULL DEFAULT 'shared',
+                content     TEXT NOT NULL
             );
         """)
         conn.commit()
@@ -70,6 +72,12 @@ def upsert(
     base_url: str = OLLAMA_BASE_URL,
     embed_model: str = EMBED_MODEL,
 ) -> None:
+    """Embed a chunk and upsert into elvis.db as source_type='document'.
+
+    source_id is stored as "{source_id}::chunk_{chunk_index}" so chunks
+    are distinguishable but can be grouped back by source.
+    """
+    uid = f"{source_id}::chunk_{chunk_index}"
     vector = embed(content, base_url, embed_model)
     packed = _pack(vector)
 
@@ -79,8 +87,8 @@ def upsert(
         conn.enable_load_extension(False)
 
         row = conn.execute(
-            "SELECT rowid FROM vec_metadata WHERE source_id=? AND chunk_index=?",
-            (source_id, chunk_index),
+            "SELECT rowid FROM vec_metadata WHERE source_id=? AND source_type='document'",
+            (uid,),
         ).fetchone()
 
         if row:
@@ -96,8 +104,9 @@ def upsert(
             )
         else:
             cursor = conn.execute(
-                "INSERT INTO vec_metadata (source_id, chunk_index, content) VALUES (?, ?, ?)",
-                (source_id, chunk_index, content),
+                "INSERT INTO vec_metadata (source_id, source_type, member_id, content) "
+                "VALUES (?, 'document', 'shared', ?)",
+                (uid, content),
             )
             new_rowid = cursor.lastrowid
             conn.execute(
@@ -109,19 +118,24 @@ def upsert(
 
 
 def delete_source(source_id: str, db_path: str) -> None:
+    """Delete all chunks for a source (matches source_id::chunk_* pattern)."""
     with sqlite3.connect(db_path) as conn:
         conn.enable_load_extension(True)
         sqlite_vec.load(conn)
         conn.enable_load_extension(False)
 
         rows = conn.execute(
-            "SELECT rowid FROM vec_metadata WHERE source_id=?", (source_id,)
+            "SELECT rowid FROM vec_metadata WHERE source_type='document' AND source_id LIKE ?",
+            (source_id + "::%",),
         ).fetchall()
 
         for (rowid,) in rows:
             conn.execute("DELETE FROM vec_items WHERE rowid=?", (rowid,))
 
-        conn.execute("DELETE FROM vec_metadata WHERE source_id=?", (source_id,))
+        conn.execute(
+            "DELETE FROM vec_metadata WHERE source_type='document' AND source_id LIKE ?",
+            (source_id + "::%",),
+        )
         conn.commit()
 
 
@@ -131,8 +145,13 @@ def clear_all(db_path: str) -> None:
         sqlite_vec.load(conn)
         conn.enable_load_extension(False)
 
-        conn.execute("DELETE FROM vec_metadata")
-        conn.execute("DELETE FROM vec_items")
+        rows = conn.execute(
+            "SELECT rowid FROM vec_metadata WHERE source_type='document'"
+        ).fetchall()
+        for (rowid,) in rows:
+            conn.execute("DELETE FROM vec_items WHERE rowid=?", (rowid,))
+
+        conn.execute("DELETE FROM vec_metadata WHERE source_type='document'")
         conn.commit()
 
 
@@ -149,47 +168,58 @@ def search(
     base_url: str = OLLAMA_BASE_URL,
     embed_model: str = EMBED_MODEL,
 ) -> List[Tuple[str, str, float]]:
-    """Returns list of (source_id, content, distance). Lower distance = more similar."""
+    """KNN search over document chunks. Returns (source_id, content, distance).
+
+    source_id has the ::chunk_N suffix stripped so callers see the original source.
+    """
     vector = embed(query_text, base_url, embed_model)
     packed = _pack(vector)
+
+    fetch_n = top_k * 6  # over-fetch then filter in Python
 
     with sqlite3.connect(db_path) as conn:
         conn.enable_load_extension(True)
         sqlite_vec.load(conn)
         conn.enable_load_extension(False)
 
-        if source_filter:
-            if source_filter.endswith("/"):
-                filter_clause = "AND m.source_id LIKE ?"
-                filter_val = source_filter + "%"
-            else:
-                filter_clause = "AND m.source_id = ?"
-                filter_val = source_filter
-            rows = conn.execute(f"""
-                SELECT m.source_id, m.content, v.distance
-                FROM vec_items v
-                JOIN vec_metadata m ON v.rowid = m.rowid
-                WHERE v.embedding MATCH ?
-                  AND k = ?
-                  {filter_clause}
-                ORDER BY v.distance
-            """, (packed, top_k, filter_val)).fetchall()
-        else:
-            rows = conn.execute("""
-                SELECT m.source_id, m.content, v.distance
-                FROM vec_items v
-                JOIN vec_metadata m ON v.rowid = m.rowid
-                WHERE v.embedding MATCH ?
-                  AND k = ?
-                ORDER BY v.distance
-            """, (packed, top_k)).fetchall()
+        rows = conn.execute("""
+            SELECT m.source_id, m.content, v.distance
+            FROM vec_items v
+            JOIN vec_metadata m ON v.rowid = m.rowid
+            WHERE v.embedding MATCH ?
+              AND k = ?
+              AND m.source_type = 'document'
+            ORDER BY v.distance
+        """, (packed, fetch_n)).fetchall()
 
-    return [(s, c, d) for s, c, d in rows if d <= max_distance]
+    results = []
+    for raw_sid, content, dist in rows:
+        if dist > max_distance:
+            continue
+        base = raw_sid.rsplit("::", 1)[0] if "::" in raw_sid else raw_sid
+        if source_filter:
+            if source_filter.endswith("/") and not base.startswith(source_filter):
+                continue
+            elif not source_filter.endswith("/") and base != source_filter:
+                continue
+        results.append((base, content, dist))
+        if len(results) >= top_k:
+            break
+
+    return results
 
 
 def list_sources(db_path: str) -> List[str]:
     with sqlite3.connect(db_path) as conn:
         rows = conn.execute(
-            "SELECT DISTINCT source_id FROM vec_metadata ORDER BY source_id"
+            "SELECT DISTINCT source_id FROM vec_metadata "
+            "WHERE source_type='document' ORDER BY source_id"
         ).fetchall()
-    return [r[0] for r in rows]
+    seen = set()
+    sources = []
+    for (sid,) in rows:
+        base = sid.rsplit("::", 1)[0] if "::" in sid else sid
+        if base not in seen:
+            seen.add(base)
+            sources.append(base)
+    return sources

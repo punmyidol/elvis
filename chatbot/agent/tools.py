@@ -107,6 +107,40 @@ def remember(fact: str, member_id: str, scope: str = "personal") -> str:
 
 
 # ---------------------------------------------------------------------------
+# Gmail — semantic search over stored emails
+# ---------------------------------------------------------------------------
+
+@tool
+def search_gmail(query: str) -> str:
+    """
+    Semantic search over stored Gmail emails.
+    Use this when the user asks about a specific email, sender, topic, or invoice.
+    Returns the most relevant emails. Emails must be fetched first with gmail-module/fetch.py.
+    """
+    from services.gmail import search_gmail_logic
+    return search_gmail_logic(query)
+
+
+# ---------------------------------------------------------------------------
+# RAG knowledge base — semantic search over personal documents
+# ---------------------------------------------------------------------------
+
+@tool
+def search_documents(query: str, source_filter: str = "") -> str:
+    """
+    Semantic search over personal documents stored in the RAG knowledge base.
+    Use this for ANY question about files the user has stored — CV, resume, transcript,
+    receipts, photos, notes, tax documents, or anything in the files/ folder.
+    source_filter: use the EXACT filename when the user asks about a specific file
+    (e.g. "files/cv.txt" for CV questions, "files/transcript.pdf" for transcript).
+    Use "files/" only when searching across all files. Default empty searches everything.
+    ALWAYS use this tool before saying you don't know something about the user's personal files.
+    """
+    from services.news_rag import search_docs_logic
+    return search_docs_logic(query, source_filter)
+
+
+# ---------------------------------------------------------------------------
 # Document CRUD Workflow
 # ---------------------------------------------------------------------------
 
@@ -161,4 +195,8 @@ def move_document(old_name: str, new_name: str) -> str:
 # Exported tool list
 # ---------------------------------------------------------------------------
 
-ELVIS_TOOLS = [web_search, get_news, get_calendar, remember, list_documents, read_document, write_document, delete_document, move_document]
+ELVIS_TOOLS = [
+    web_search, get_news, get_calendar, remember,
+    search_gmail, search_documents,
+    list_documents, read_document, write_document, delete_document, move_document,
+]

@@ -117,6 +117,8 @@ Rules:
 - Use get_calendar when asked about schedules, events, or appointments.
 - Use web_search for general questions or anything requiring current information.
 - Use remember when the user explicitly asks you to remember something.
+- Use search_gmail for any email question including summaries — pass a broad query like "recent emails" if no specific topic is mentioned.
+- Use search_documents when the user asks about ANY personal file — CV, resume, transcript, photos, receipts, tax docs. Never guess the content; always call the tool first.
 - Keep answers concise and natural.
 """
 
@@ -176,13 +178,20 @@ def ask_chatbot(
     ):
         if isinstance(event, tuple):
             message, metadata = event
+            node = metadata.get("langgraph_node")
+
+            # Debug: print tool calls as the LLM decides to use them
+            if node == "chatbot" and hasattr(message, "tool_calls") and message.tool_calls:
+                for tc in message.tool_calls:
+                    print(f"[tool] {tc['name']}({tc.get('args', {})})", flush=True)
+
             if (
                 hasattr(message, "content")
                 and message.content
-                and metadata.get("langgraph_node") == "chatbot"
+                and node == "chatbot"
             ):
                 full_response += message.content
                 yield message.content
 
-    if latest_human and full_response:
-        mm.extract_and_save_memories(member_id, latest_human, full_response)
+    # Memory extraction disabled
+    pass

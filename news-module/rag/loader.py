@@ -61,6 +61,17 @@ def load_csv(path: str) -> str:
     return "\n".join(lines)
 
 
+def load_image(path: str) -> str:
+    """Extract text from an image using mlx-ocr (Apple MLX, on-device)."""
+    from mlx_ocr import MLXOCR
+    from PIL import Image
+
+    ocr = MLXOCR("eng", "eng")
+    image = Image.open(path).convert("RGB")
+    text_boxes = ocr(image)
+    return "\n".join(item["text"] for item in text_boxes)
+
+
 def load_url(url: str) -> str:
     import requests
     from bs4 import BeautifulSoup
@@ -93,6 +104,10 @@ def load_and_chunk(source: str) -> List[str]:
         loaders = {
             "pdf": load_pdf,
             "csv": load_csv,
+            "jpg": load_image,
+            "jpeg": load_image,
+            "png": load_image,
+            "webp": load_image,
         }
         loader = loaders.get(ext, load_text)  # txt, md, and everything else → load_text
         text = loader(source)
