@@ -51,7 +51,7 @@ def build_workflow():
         model=OLLAMA_MODEL,
         base_url=OLLAMA_BASE_URL,
         temperature=0.5,
-        streaming=False,
+        streaming=True,
     ).bind_tools(ELVIS_TOOLS)
 
     def chatbot_node(state: MessagesState):

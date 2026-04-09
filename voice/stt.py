@@ -26,24 +26,32 @@ def _rms(x: np.ndarray) -> float:
 
 def listen_once(timeout: float = 5.0, silence_threshold: float = RMS_THRESHOLD) -> str:
     """
-    Record until speech is detected, then return the transcribed text.
-    Blocks until audio above the threshold is captured and transcribed.
+    Record a complete utterance and return the transcribed text.
+
+    Waits for speech to begin (RMS above threshold for SPEECH_START_CHUNKS
+    consecutive chunks), accumulates audio until silence is sustained for
+    END_SILENCE_CHUNKS, then transcribes the full utterance.
 
     Args:
-        timeout: max seconds to wait for speech before returning "".
+        timeout: max seconds to wait for speech to BEGIN before returning "".
         silence_threshold: RMS level below which audio is considered silence.
 
     Returns:
-        Transcribed string, or "" if nothing detected within timeout.
+        Transcribed string, or "" if no speech detected within timeout.
     """
+    SPEECH_START_CHUNKS = 3                              # 0.3s to confirm speech
+    END_SILENCE_CHUNKS = int(0.8 / (CHUNK_SIZE / SAMPLE_RATE))  # 0.8s of silence = EOU
+
     audio_q: queue.Queue = queue.Queue()
-    buffer = np.zeros(int(SAMPLE_RATE * BUFFER_SECONDS), dtype=np.float32)
 
     def callback(indata, frames, time_info, status):
         audio_q.put(indata[:, 0].copy())
 
+    state = "WAITING"
+    speech_run = 0
+    silence_run = 0
+    utterance_chunks: list = []
     deadline = time.time() + timeout
-    last_transcribe = 0.0
 
     with sd.InputStream(
         channels=1,
@@ -52,28 +60,37 @@ def listen_once(timeout: float = 5.0, silence_threshold: float = RMS_THRESHOLD) 
         dtype="float32",
         callback=callback,
     ):
-        while time.time() < deadline:
+        while True:
+            if state == "WAITING" and time.time() >= deadline:
+                return ""
+
             try:
                 chunk = audio_q.get(timeout=0.2)
             except queue.Empty:
                 continue
 
-            buffer[:-CHUNK_SIZE] = buffer[CHUNK_SIZE:]
-            buffer[-CHUNK_SIZE:] = chunk
+            is_loud = _rms(chunk) >= silence_threshold
 
-            if _rms(buffer) < silence_threshold:
-                continue
+            if state == "WAITING":
+                if is_loud:
+                    speech_run += 1
+                    if speech_run >= SPEECH_START_CHUNKS:
+                        utterance_chunks = [chunk]
+                        silence_run = 0
+                        state = "RECORDING"
+                else:
+                    speech_run = 0
 
-            if time.time() - last_transcribe < TRANSCRIBE_INTERVAL:
-                continue
-
-            last_transcribe = time.time()
-            result = mlx_whisper.transcribe(buffer, path_or_hf_repo=MODEL_REPO)
-            text = result.get("text", "").strip()
-            if text:
-                return text
-
-    return ""
+            elif state == "RECORDING":
+                utterance_chunks.append(chunk)
+                if is_loud:
+                    silence_run = 0
+                else:
+                    silence_run += 1
+                    if silence_run >= END_SILENCE_CHUNKS:
+                        audio = np.concatenate(utterance_chunks)
+                        result = mlx_whisper.transcribe(audio, path_or_hf_repo=MODEL_REPO)
+                        return result.get("text", "").strip()
 
 
 def stream_transcribe(on_text, stop_event=None, silence_threshold: float = RMS_THRESHOLD):

@@ -1,8 +1,0 @@
-sqlite-vec
-ollama
-langchain-ollama
-langchain-core
-pdfplumber
-pandas
-requests
-beautifulsoup4
