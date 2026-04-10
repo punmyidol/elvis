@@ -2,10 +2,11 @@
 elvis/vector_store.py
 
 SQLite-vec powered vector store for Elvis RAG.
-- Single vectors table in elvis.db alongside all other tables
-- Embedding via nomic-embed-text through Ollama (no new services)
-- source_type: "memory" | "news" | "document"
-- Upsert-safe: re-embedding the same source_id replaces the old vector
+Separate virtual tables per source type to eliminate KNN pool dilution:
+  doc_vec_items  / doc_vec_metadata  — personal documents (auto-chunked)
+  news_vec_items / news_vec_metadata — news articles (one vector per article)
+
+Embedding: nomic-embed-text via Ollama (768-dim)
 """
 
 import sqlite3
@@ -17,55 +18,101 @@ import sqlite_vec
 
 from core.config import DB_PATH, OLLAMA_BASE_URL, EMBED_MODEL, VECTOR_TOP_K
 
-# nomic-embed-text outputs 768-dimensional vectors
 VECTOR_DIM = 768
+CHUNK_SIZE = 400    # words per chunk
+CHUNK_OVERLAP = 50  # word overlap between chunks
 
 
 # ---------------------------------------------------------------------------
-# DB initialisation — call once from family.init_db()
+# Chunking
+# ---------------------------------------------------------------------------
+
+def _chunk_text(text: str) -> List[str]:
+    words = text.split()
+    if not words:
+        return []
+    chunks, start = [], 0
+    while start < len(words):
+        end = start + CHUNK_SIZE
+        chunks.append(" ".join(words[start:end]))
+        if end >= len(words):
+            break
+        start += CHUNK_SIZE - CHUNK_OVERLAP
+    return chunks
+
+
+# ---------------------------------------------------------------------------
+# DB initialisation
 # ---------------------------------------------------------------------------
 
 def init_vector_table(db_path: str = DB_PATH):
-    """Create the vectors virtual table if it doesn't exist."""
+    """Create per-type vector tables if they don't exist."""
     with sqlite3.connect(db_path) as conn:
         conn.enable_load_extension(True)
         sqlite_vec.load(conn)
         conn.enable_load_extension(False)
 
         conn.executescript(f"""
-            CREATE VIRTUAL TABLE IF NOT EXISTS vec_items USING vec0(
+            CREATE VIRTUAL TABLE IF NOT EXISTS doc_vec_items USING vec0(
                 embedding float[{VECTOR_DIM}]
             );
+            CREATE TABLE IF NOT EXISTS doc_vec_metadata (
+                rowid     INTEGER PRIMARY KEY,
+                source_id TEXT NOT NULL,
+                member_id TEXT NOT NULL DEFAULT 'shared',
+                content   TEXT NOT NULL
+            );
 
-            CREATE TABLE IF NOT EXISTS vec_metadata (
-                rowid       INTEGER PRIMARY KEY,
-                source_id   TEXT NOT NULL,
-                source_type TEXT NOT NULL CHECK(source_type IN ('memory', 'news', 'document')),
-                member_id   TEXT NOT NULL DEFAULT 'shared',
-                content     TEXT NOT NULL
+            CREATE VIRTUAL TABLE IF NOT EXISTS news_vec_items USING vec0(
+                embedding float[{VECTOR_DIM}]
+            );
+            CREATE TABLE IF NOT EXISTS news_vec_metadata (
+                rowid     INTEGER PRIMARY KEY,
+                source_id TEXT NOT NULL,
+                member_id TEXT NOT NULL DEFAULT 'shared',
+                content   TEXT NOT NULL
             );
         """)
         conn.commit()
-    print(f"[VectorStore] Initialised vec_items table (dim={VECTOR_DIM})")
+    print(f"[VectorStore] Initialised doc + news vec tables (dim={VECTOR_DIM})")
 
 
 # ---------------------------------------------------------------------------
-# Embedding
+# Internal helpers
 # ---------------------------------------------------------------------------
 
 def embed_text(text: str) -> List[float]:
-    """
-    Embed a string using nomic-embed-text via Ollama.
-    Returns a list of 768 floats.
-    """
     client = ollama.Client(host=OLLAMA_BASE_URL)
     response = client.embed(model=EMBED_MODEL, input=text)
     return response.embeddings[0]
 
 
 def _pack(vector: List[float]) -> bytes:
-    """Pack a float list into bytes for sqlite-vec storage."""
     return struct.pack(f"{len(vector)}f", *vector)
+
+
+def _tables(source_type: str) -> Tuple[str, str]:
+    """Return (vec_table, meta_table) for a source type."""
+    if source_type == "document":
+        return "doc_vec_items", "doc_vec_metadata"
+    if source_type == "news":
+        return "news_vec_items", "news_vec_metadata"
+    raise ValueError(f"Unknown source_type: {source_type!r}")
+
+
+def _upsert_one(conn, vec_table: str, meta_table: str, uid: str, content: str, member_id: str, packed: bytes):
+    row = conn.execute(f"SELECT rowid FROM {meta_table} WHERE source_id=?", (uid,)).fetchone()
+    if row:
+        rowid = row[0]
+        conn.execute(f"UPDATE {meta_table} SET content=?, member_id=? WHERE rowid=?", (content, member_id, rowid))
+        conn.execute(f"DELETE FROM {vec_table} WHERE rowid=?", (rowid,))
+        conn.execute(f"INSERT INTO {vec_table}(rowid, embedding) VALUES (?, ?)", (rowid, packed))
+    else:
+        cursor = conn.execute(
+            f"INSERT INTO {meta_table} (source_id, member_id, content) VALUES (?, ?, ?)",
+            (uid, member_id, content),
+        )
+        conn.execute(f"INSERT INTO {vec_table}(rowid, embedding) VALUES (?, ?)", (cursor.lastrowid, packed))
 
 
 # ---------------------------------------------------------------------------
@@ -78,61 +125,34 @@ def upsert_vector(
     content: str,
     member_id: str = "shared",
     db_path: str = DB_PATH,
-) -> bool:
+) -> int:
     """
-    Embed content and upsert into vec_items + vec_metadata.
-    source_id must be unique per item:
-      memories  → "memory_{id}"
-      news      → "news_{id}"
-      documents → "doc_{filepath_hash}_chunk_{n}"
-    Returns True on success, False if embedding failed.
+    Embed and store content. Documents are auto-chunked (400 words, 50 overlap).
+    Returns number of vectors upserted.
     """
-    try:
-        vector = embed_text(content)
-    except Exception as e:
-        print(f"[VectorStore] Embedding failed for '{source_id}': {e}")
-        return False
-
-    packed = _pack(vector)
+    vec_table, meta_table = _tables(source_type)
+    chunks = _chunk_text(content) if source_type == "document" else [content]
+    uids = [f"{source_id}::chunk_{i}" for i in range(len(chunks))] if source_type == "document" else [source_id]
 
     with sqlite3.connect(db_path) as conn:
         conn.enable_load_extension(True)
         sqlite_vec.load(conn)
         conn.enable_load_extension(False)
 
-        row = conn.execute(
-            "SELECT rowid FROM vec_metadata WHERE source_id=? AND source_type=?",
-            (source_id, source_type),
-        ).fetchone()
-
-        if row:
-            existing_rowid = row[0]
-            conn.execute(
-                "UPDATE vec_metadata SET content=?, member_id=? WHERE rowid=?",
-                (content, member_id, existing_rowid),
-            )
-            # sqlite-vec doesn't support UPDATE — must delete + reinsert
-            conn.execute("DELETE FROM vec_items WHERE rowid=?", (existing_rowid,))
-            conn.execute(
-                "INSERT INTO vec_items(rowid, embedding) VALUES (?, ?)",
-                (existing_rowid, packed),
-            )
-        else:
-            cursor = conn.execute(
-                "INSERT INTO vec_metadata (source_id, source_type, member_id, content) "
-                "VALUES (?, ?, ?, ?)",
-                (source_id, source_type, member_id, content),
-            )
-            new_rowid = cursor.lastrowid
-            conn.execute(
-                "INSERT INTO vec_items(rowid, embedding) VALUES (?, ?)",
-                (new_rowid, packed),
-            )
+        stored = 0
+        for uid, chunk in zip(uids, chunks):
+            try:
+                vector = embed_text(chunk)
+            except Exception as e:
+                print(f"[VectorStore] Embedding failed for '{uid}': {e}")
+                continue
+            _upsert_one(conn, vec_table, meta_table, uid, chunk, member_id, _pack(vector))
+            stored += 1
 
         conn.commit()
 
-    print(f"[VectorStore] Upserted {source_type} '{source_id}' for '{member_id}'")
-    return True
+    print(f"[VectorStore] Upserted {stored}/{len(chunks)} chunk(s) for {source_type} '{source_id}'")
+    return stored
 
 
 # ---------------------------------------------------------------------------
@@ -141,23 +161,17 @@ def upsert_vector(
 
 def search_similar(
     query: str,
-    source_type: Optional[str] = None,
+    source_type: str,
     member_id: Optional[str] = None,
     top_k: int = VECTOR_TOP_K,
     db_path: str = DB_PATH,
 ) -> List[Tuple[str, str, str, float]]:
     """
-    Semantic search over stored vectors.
-
-    Args:
-        query:       natural language query to embed and search
-        source_type: filter to "memory", "news", or "document" (None = all)
-        member_id:   filter by member — also always includes 'shared' rows (None = no filter)
-        top_k:       number of results
-
-    Returns:
-        List of (source_id, source_type, content, distance) — lowest distance = most similar.
+    KNN search scoped to a single source type's dedicated table.
+    Returns list of (source_id, source_type, content, distance).
     """
+    vec_table, meta_table = _tables(source_type)
+
     try:
         vector = embed_text(query)
     except Exception as e:
@@ -165,33 +179,28 @@ def search_similar(
         return []
 
     packed = _pack(vector)
-
-    # sqlite-vec requires the KNN limit in the WHERE clause, not LIMIT
-    # We fetch a larger pool then apply metadata filters in Python
-    fetch_n = top_k * 6
+    # Over-fetch only for member_id post-filter; type filtering is now free (separate table)
+    fetch_n = top_k * 4 if member_id else top_k
 
     with sqlite3.connect(db_path) as conn:
         conn.enable_load_extension(True)
         sqlite_vec.load(conn)
         conn.enable_load_extension(False)
 
-        rows = conn.execute("""
-            SELECT m.source_id, m.source_type, m.content, m.member_id, v.distance
-            FROM vec_items v
-            JOIN vec_metadata m ON v.rowid = m.rowid
+        rows = conn.execute(f"""
+            SELECT m.source_id, m.content, m.member_id, v.distance
+            FROM {vec_table} v
+            JOIN {meta_table} m ON v.rowid = m.rowid
             WHERE v.embedding MATCH ?
               AND k = ?
             ORDER BY v.distance
         """, (packed, fetch_n)).fetchall()
 
-    # Apply filters in Python after KNN fetch
     results = []
-    for source_id, stype, content, mid, dist in rows:
-        if source_type and stype != source_type:
-            continue
+    for sid, content, mid, dist in rows:
         if member_id and mid != member_id and mid != "shared":
             continue
-        results.append((source_id, stype, content, dist))
+        results.append((sid, source_type, content, dist))
         if len(results) >= top_k:
             break
 
@@ -199,33 +208,46 @@ def search_similar(
 
 
 # ---------------------------------------------------------------------------
-# Utilities
+# Delete
 # ---------------------------------------------------------------------------
 
 def delete_vector(source_id: str, source_type: str, db_path: str = DB_PATH):
-    """Remove a vector and its metadata."""
+    """Remove a vector (or all chunks for a document) and its metadata."""
+    vec_table, meta_table = _tables(source_type)
+
     with sqlite3.connect(db_path) as conn:
         conn.enable_load_extension(True)
         sqlite_vec.load(conn)
         conn.enable_load_extension(False)
 
-        row = conn.execute(
-            "SELECT rowid FROM vec_metadata WHERE source_id=? AND source_type=?",
-            (source_id, source_type),
-        ).fetchone()
+        if source_type == "document":
+            rows = conn.execute(
+                f"SELECT rowid FROM {meta_table} WHERE source_id LIKE ?",
+                (source_id + "::%",),
+            ).fetchall()
+            for (rowid,) in rows:
+                conn.execute(f"DELETE FROM {vec_table} WHERE rowid=?", (rowid,))
+            conn.execute(f"DELETE FROM {meta_table} WHERE source_id LIKE ?", (source_id + "::%",))
+        else:
+            row = conn.execute(f"SELECT rowid FROM {meta_table} WHERE source_id=?", (source_id,)).fetchone()
+            if row:
+                conn.execute(f"DELETE FROM {vec_table} WHERE rowid=?", (row[0],))
+                conn.execute(f"DELETE FROM {meta_table} WHERE source_id=?", (source_id,))
+            rows = [row] if row else []
 
-        if row:
-            rowid = row[0]
-            conn.execute("DELETE FROM vec_items WHERE rowid=?", (rowid,))
-            conn.execute("DELETE FROM vec_metadata WHERE rowid=?", (rowid,))
-            conn.commit()
-            print(f"[VectorStore] Deleted {source_type} '{source_id}'")
+        conn.commit()
+        print(f"[VectorStore] Deleted {len(rows)} vector(s) for {source_type} '{source_id}'")
 
+
+# ---------------------------------------------------------------------------
+# Utilities
+# ---------------------------------------------------------------------------
 
 def count_vectors(db_path: str = DB_PATH) -> dict:
-    """Return count of vectors per source_type — useful for debugging."""
+    """Return count of vectors per source_type."""
+    result = {}
     with sqlite3.connect(db_path) as conn:
-        rows = conn.execute(
-            "SELECT source_type, COUNT(*) FROM vec_metadata GROUP BY source_type"
-        ).fetchall()
-    return {r[0]: r[1] for r in rows}
+        for stype in ("document", "news"):
+            _, meta_table = _tables(stype)
+            result[stype] = conn.execute(f"SELECT COUNT(*) FROM {meta_table}").fetchone()[0]
+    return result

@@ -25,7 +25,7 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from core.config import OLLAMA_MODEL, OLLAMA_BASE_URL, DB_PATH, CHATBOT_NAME, MAX_CONTEXT_TOKENS
 from agent.tools import ELVIS_TOOLS
 from voice.stt import listen_once
-from voice.tts import speak, stop, is_speaking
+from voice.tts import speak, stop, is_speaking, feed, flush, drain
 
 
 def _wait_for_tts():
@@ -105,11 +105,13 @@ def main():
                     and metadata.get("langgraph_node") == "chatbot"
                 ):
                     response_text += message.content
+                    feed(message.content)
 
         if response_text:
             print(f"Elvis: {response_text}\n")
-            speak(response_text)
-            _wait_for_tts()
+            flush()
+            drain()
+            time.sleep(2.1)
 
 
 if __name__ == "__main__":

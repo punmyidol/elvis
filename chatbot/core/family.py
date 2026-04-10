@@ -114,15 +114,6 @@ def init_db(db_path: str = DB_PATH):
                 last_synced TEXT DEFAULT CURRENT_TIMESTAMP
             );
 
-            CREATE TABLE IF NOT EXISTS document_chunks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                file_path TEXT NOT NULL,
-                chunk_index INTEGER NOT NULL,
-                content TEXT NOT NULL,
-                member_id TEXT,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(file_path, chunk_index)
-            );
         """)
         conn.commit()
 

@@ -10,6 +10,7 @@ import argparse
 import sqlite3
 import sys
 import os
+import time
 
 # Make chatbot/ importable
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "chatbot"))
@@ -25,6 +26,14 @@ from core.config import DB_PATH, OLLAMA_MODEL, OLLAMA_BASE_URL, MAX_CONTEXT_TOKE
 from core.family import init_db, seed_defaults, get_member
 from agent.tools import ELVIS_TOOLS, set_current_member
 from agent.memory import MemoryManager
+from voice.stt import listen_once
+from voice.tts import speak, stop, is_speaking, feed, flush, drain
+
+
+def _wait_for_tts():
+    while is_speaking():
+        time.sleep(0.05)
+    time.sleep(2.1)
 
 
 def _extract_text(content) -> str:
@@ -35,7 +44,7 @@ def _extract_text(content) -> str:
     return ""
 
 
-def build_system_prompt(member, shared_mems, personal_mems) -> str:
+def build_system_prompt(member, shared_mems, personal_mems, voice: bool = False) -> str:
     member_name = member.name if member else "the user"
     member_role = member.role if member else "family member"
 
@@ -53,6 +62,8 @@ Rules:
 - Use search_documents when the user asks about a document, file, note, or personal record they have stored.
 - Keep answers concise and natural.
 """
+    if voice:
+        base += "- Voice mode: avoid markdown, bullet points, and emojis. Speak in plain sentences.\n"
     if shared_mems:
         facts = "\n".join(f"  - {m.content}" for m in shared_mems)
         base += f"\n## Shared family knowledge:\n{facts}\n"
@@ -64,7 +75,7 @@ Rules:
     return base
 
 
-def make_workflow(member_id: str):
+def make_workflow(member_id: str, voice: bool = False):
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     checkpointer = SqliteSaver(conn)
 
@@ -87,7 +98,7 @@ def make_workflow(member_id: str):
             "",
         )
         shared, personal = mm.get_relevant_memories(mid, latest)
-        system = build_system_prompt(member, shared, personal)
+        system = build_system_prompt(member, shared, personal, voice=voice)
         trimmed = trim_messages(
             state["messages"],
             max_tokens=MAX_CONTEXT_TOKENS,
@@ -108,31 +119,51 @@ def make_workflow(member_id: str):
     return builder.compile(checkpointer=checkpointer)
 
 
-def chat(member_id: str = "parent_1"):
+def chat(member_id: str = "parent_1", voice: bool = False):
     init_db(DB_PATH)
     seed_defaults(DB_PATH)
     set_current_member(member_id)
 
-    workflow = make_workflow(member_id)
+    workflow = make_workflow(member_id, voice=voice)
     import uuid
     app_config: RunnableConfig = {
         "configurable": {"user_id": member_id, "thread_id": f"cli-{uuid.uuid4().hex[:8]}"}
     }
     mm = MemoryManager()
 
-    print(f"Elvis CLI — model: {OLLAMA_MODEL} | member: {member_id} | db: {DB_PATH}")
-    print("Type your message. Ctrl-C or 'quit' to exit.\n")
+    mode = "voice" if voice else "text"
+    print(f"Elvis CLI — model: {OLLAMA_MODEL} | member: {member_id} | db: {DB_PATH} | mode: {mode}")
+    if voice:
+        print("Speak your message. Ctrl-C to exit.\n")
+        speak("Hi, I'm Elvis. How can I help you?")
+        _wait_for_tts()
+    else:
+        print("Type your message. Ctrl-C or 'quit' to exit.\n")
 
     while True:
-        try:
-            user_input = input("You: ").strip()
-        except (KeyboardInterrupt, EOFError):
-            print("\nBye.")
-            break
+        if voice:
+            print("Listening...", flush=True)
+            try:
+                user_input = listen_once(timeout=10.0)
+            except KeyboardInterrupt:
+                stop()
+                print("\nBye.")
+                break
+            if not user_input:
+                continue
+            print(f"You: {user_input}")
+        else:
+            try:
+                user_input = input("You: ").strip()
+            except (KeyboardInterrupt, EOFError):
+                print("\nBye.")
+                break
+            if not user_input or user_input.lower() in ("quit", "exit"):
+                print("Bye.")
+                break
 
-        if not user_input or user_input.lower() in ("quit", "exit"):
-            print("Bye.")
-            break
+        if voice:
+            stop()
 
         messages = [HumanMessage(content=user_input)]
         print("Elvis: ", end="", flush=True)
@@ -155,8 +186,15 @@ def chat(member_id: str = "parent_1"):
                 if hasattr(message, "content") and message.content and node == "chatbot":
                     print(message.content, end="", flush=True)
                     full_response += message.content
+                    if voice:
+                        feed(message.content)
 
         print()
+
+        if voice and full_response:
+            flush()
+            drain()
+            time.sleep(2.1)
 
         # Memory extraction disabled
 
@@ -164,8 +202,9 @@ def chat(member_id: str = "parent_1"):
 def main():
     parser = argparse.ArgumentParser(description="Chat with Elvis in the terminal")
     parser.add_argument("--member", default="parent_1", help="Family member ID")
+    parser.add_argument("--voice", action="store_true", help="Enable voice I/O (STT + TTS)")
     args = parser.parse_args()
-    chat(args.member)
+    chat(args.member, voice=args.voice)
 
 
 if __name__ == "__main__":

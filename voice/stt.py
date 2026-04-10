@@ -17,7 +17,7 @@ CHUNK_SIZE = 1600          # 0.1 s per chunk
 BUFFER_SECONDS = 2.0
 RMS_THRESHOLD = 0.01
 TRANSCRIBE_INTERVAL = 0.5  # seconds between transcriptions
-MODEL_REPO = "mlx-community/whisper-medium.en-mlx"
+MODEL_REPO = "mlx-community/whisper-medium-mlx"
 
 
 def _rms(x: np.ndarray) -> float:
@@ -89,7 +89,7 @@ def listen_once(timeout: float = 5.0, silence_threshold: float = RMS_THRESHOLD) 
                     silence_run += 1
                     if silence_run >= END_SILENCE_CHUNKS:
                         audio = np.concatenate(utterance_chunks)
-                        result = mlx_whisper.transcribe(audio, path_or_hf_repo=MODEL_REPO)
+                        result = mlx_whisper.transcribe(audio, path_or_hf_repo=MODEL_REPO, language="th", task="translate")
                         return result.get("text", "").strip()
 
 
@@ -138,7 +138,7 @@ def stream_transcribe(on_text, stop_event=None, silence_threshold: float = RMS_T
                 continue
 
             last_transcribe = time.time()
-            result = mlx_whisper.transcribe(buffer, path_or_hf_repo=MODEL_REPO)
+            result = mlx_whisper.transcribe(buffer, path_or_hf_repo=MODEL_REPO, language="th", task="translate")
             text = result.get("text", "").strip()
             if text:
                 on_text(text)

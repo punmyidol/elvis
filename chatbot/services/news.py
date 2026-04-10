@@ -7,7 +7,7 @@ News cache manager — BBC RSS edition.
 - LLM summarises each article into 2-3 sentences
 - Stores in news_cache with today's date
 - Also embeds each article for semantic retrieval
-- Deletes yesterday's cache on refresh
+- Deletes cache older than 7 days on refresh
 - Retrieval is instant — always from cache, never live
 """
 
@@ -119,7 +119,7 @@ def _fetch_from_rss(topic: str, max_results: int) -> List[dict]:
 # ---------------------------------------------------------------------------
 
 def _delete_old_news(member_id: str, db_path: str = DB_PATH):
-    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    yesterday = (date.today() - timedelta(days=7)).isoformat()
     with sqlite3.connect(db_path) as conn:
         # Get IDs of old rows before deleting (for vector cleanup)
         old_ids = conn.execute(
@@ -136,9 +136,9 @@ def _delete_old_news(member_id: str, db_path: str = DB_PATH):
     # Clean up vectors for deleted news
     if old_ids:
         try:
-            from vector_store import delete_vectors_for_source
+            from vector_store import delete_vector
             for (old_id,) in old_ids:
-                delete_vectors_for_source("news", str(old_id))
+                delete_vector(str(old_id), "news")
         except Exception as e:
             print(f"[News] Vector cleanup failed: {e}")
 
@@ -254,7 +254,7 @@ def search_news_semantic(
     today = date.today().isoformat()
     results = search_similar(
         query=query,
-        source_types=["news"],
+        source_type="news",
         member_id=member_id,
         top_k=top_k,
     )

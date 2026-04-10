@@ -2,11 +2,11 @@
 rag/db.py
 
 sqlite-vec powered vector store — writes into the shared elvis.db using the
-same vec_items / vec_metadata schema as the main chatbot (source_type='document').
+doc_vec_items / doc_vec_metadata tables (owned by chatbot/agent/vector_store.py).
 
-Schema (owned by chatbot/agent/vector_store.py):
-  vec_items      — sqlite-vec virtual table (KNN over 768-dim float embeddings)
-  vec_metadata   — rowid, source_id, source_type, member_id, content
+Schema:
+  doc_vec_items    — sqlite-vec virtual table (KNN over 768-dim float embeddings)
+  doc_vec_metadata — rowid, source_id, member_id, content
 """
 
 import sqlite3
@@ -24,23 +24,22 @@ from .config import EMBED_DIM, EMBED_MODEL, MAX_DISTANCE, OLLAMA_BASE_URL, TOP_K
 # ---------------------------------------------------------------------------
 
 def init_db(db_path: str) -> None:
-    """Create vec_items / vec_metadata if they don't exist yet (chatbot schema)."""
+    """Create doc_vec_items / doc_vec_metadata if they don't exist yet."""
     with sqlite3.connect(db_path) as conn:
         conn.enable_load_extension(True)
         sqlite_vec.load(conn)
         conn.enable_load_extension(False)
 
         conn.executescript(f"""
-            CREATE VIRTUAL TABLE IF NOT EXISTS vec_items USING vec0(
+            CREATE VIRTUAL TABLE IF NOT EXISTS doc_vec_items USING vec0(
                 embedding float[{EMBED_DIM}]
             );
 
-            CREATE TABLE IF NOT EXISTS vec_metadata (
-                rowid       INTEGER PRIMARY KEY,
-                source_id   TEXT NOT NULL,
-                source_type TEXT NOT NULL DEFAULT 'document',
-                member_id   TEXT NOT NULL DEFAULT 'shared',
-                content     TEXT NOT NULL
+            CREATE TABLE IF NOT EXISTS doc_vec_metadata (
+                rowid     INTEGER PRIMARY KEY,
+                source_id TEXT NOT NULL,
+                member_id TEXT NOT NULL DEFAULT 'shared',
+                content   TEXT NOT NULL
             );
         """)
         conn.commit()
@@ -72,7 +71,7 @@ def upsert(
     base_url: str = OLLAMA_BASE_URL,
     embed_model: str = EMBED_MODEL,
 ) -> None:
-    """Embed a chunk and upsert into elvis.db as source_type='document'.
+    """Embed a chunk and upsert into doc_vec_items / doc_vec_metadata.
 
     source_id is stored as "{source_id}::chunk_{chunk_index}" so chunks
     are distinguishable but can be grouped back by source.
@@ -87,30 +86,29 @@ def upsert(
         conn.enable_load_extension(False)
 
         row = conn.execute(
-            "SELECT rowid FROM vec_metadata WHERE source_id=? AND source_type='document'",
+            "SELECT rowid FROM doc_vec_metadata WHERE source_id=?",
             (uid,),
         ).fetchone()
 
         if row:
             existing_rowid = row[0]
             conn.execute(
-                "UPDATE vec_metadata SET content=? WHERE rowid=?",
+                "UPDATE doc_vec_metadata SET content=? WHERE rowid=?",
                 (content, existing_rowid),
             )
-            conn.execute("DELETE FROM vec_items WHERE rowid=?", (existing_rowid,))
+            conn.execute("DELETE FROM doc_vec_items WHERE rowid=?", (existing_rowid,))
             conn.execute(
-                "INSERT INTO vec_items(rowid, embedding) VALUES (?, ?)",
+                "INSERT INTO doc_vec_items(rowid, embedding) VALUES (?, ?)",
                 (existing_rowid, packed),
             )
         else:
             cursor = conn.execute(
-                "INSERT INTO vec_metadata (source_id, source_type, member_id, content) "
-                "VALUES (?, 'document', 'shared', ?)",
+                "INSERT INTO doc_vec_metadata (source_id, member_id, content) VALUES (?, 'shared', ?)",
                 (uid, content),
             )
             new_rowid = cursor.lastrowid
             conn.execute(
-                "INSERT INTO vec_items(rowid, embedding) VALUES (?, ?)",
+                "INSERT INTO doc_vec_items(rowid, embedding) VALUES (?, ?)",
                 (new_rowid, packed),
             )
 
@@ -125,15 +123,15 @@ def delete_source(source_id: str, db_path: str) -> None:
         conn.enable_load_extension(False)
 
         rows = conn.execute(
-            "SELECT rowid FROM vec_metadata WHERE source_type='document' AND source_id LIKE ?",
+            "SELECT rowid FROM doc_vec_metadata WHERE source_id LIKE ?",
             (source_id + "::%",),
         ).fetchall()
 
         for (rowid,) in rows:
-            conn.execute("DELETE FROM vec_items WHERE rowid=?", (rowid,))
+            conn.execute("DELETE FROM doc_vec_items WHERE rowid=?", (rowid,))
 
         conn.execute(
-            "DELETE FROM vec_metadata WHERE source_type='document' AND source_id LIKE ?",
+            "DELETE FROM doc_vec_metadata WHERE source_id LIKE ?",
             (source_id + "::%",),
         )
         conn.commit()
@@ -145,13 +143,11 @@ def clear_all(db_path: str) -> None:
         sqlite_vec.load(conn)
         conn.enable_load_extension(False)
 
-        rows = conn.execute(
-            "SELECT rowid FROM vec_metadata WHERE source_type='document'"
-        ).fetchall()
+        rows = conn.execute("SELECT rowid FROM doc_vec_metadata").fetchall()
         for (rowid,) in rows:
-            conn.execute("DELETE FROM vec_items WHERE rowid=?", (rowid,))
+            conn.execute("DELETE FROM doc_vec_items WHERE rowid=?", (rowid,))
 
-        conn.execute("DELETE FROM vec_metadata WHERE source_type='document'")
+        conn.execute("DELETE FROM doc_vec_metadata")
         conn.commit()
 
 
@@ -184,11 +180,10 @@ def search(
 
         rows = conn.execute("""
             SELECT m.source_id, m.content, v.distance
-            FROM vec_items v
-            JOIN vec_metadata m ON v.rowid = m.rowid
+            FROM doc_vec_items v
+            JOIN doc_vec_metadata m ON v.rowid = m.rowid
             WHERE v.embedding MATCH ?
               AND k = ?
-              AND m.source_type = 'document'
             ORDER BY v.distance
         """, (packed, fetch_n)).fetchall()
 
@@ -212,8 +207,7 @@ def search(
 def list_sources(db_path: str) -> List[str]:
     with sqlite3.connect(db_path) as conn:
         rows = conn.execute(
-            "SELECT DISTINCT source_id FROM vec_metadata "
-            "WHERE source_type='document' ORDER BY source_id"
+            "SELECT DISTINCT source_id FROM doc_vec_metadata ORDER BY source_id"
         ).fetchall()
     seen = set()
     sources = []

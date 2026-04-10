@@ -15,4 +15,5 @@ elvis.db-shm
 elvis.db-wal
 rag.db
 files/
+.claude/
 credentials/
