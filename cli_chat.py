@@ -26,7 +26,7 @@ from core.config import DB_PATH, OLLAMA_MODEL, OLLAMA_BASE_URL, MAX_CONTEXT_TOKE
 from core.family import init_db, seed_defaults, get_member
 from agent.tools import ELVIS_TOOLS, set_current_member
 from agent.memory import MemoryManager
-from voice.stt import listen_once
+from voice.stt import listen_once, warmup
 from voice.tts import speak, stop, is_speaking, feed, flush, drain
 
 
@@ -45,11 +45,22 @@ def _extract_text(content) -> str:
 
 
 def build_system_prompt(member, shared_mems, personal_mems, voice: bool = False) -> str:
+    from datetime import datetime
     member_name = member.name if member else "the user"
     member_role = member.role if member else "family member"
 
+    from core.family import get_all_members
+    all_members = get_all_members()
+    roster = "\n".join(f"  - {m.name} ({m.role})" for m in all_members)
+
+    today = datetime.now().strftime("%A, %d %B %Y")
+
     base = f"""You are Elvis, a helpful and friendly personal home assistant for the {member_name} family.
 You are currently speaking with {member_name} ({member_role}).
+Today's date is {today}.
+
+## Family members:
+{roster}
 
 Rules:
 - Only state facts you are certain about. If unsure, say so or use a tool.
@@ -57,10 +68,10 @@ Rules:
 - Use get_current_time when asked what time or date it is — never guess.
 - Use get_news when asked about news or headlines — it reads from a pre-cached store.
 - Use get_calendar when asked about schedules, events, or appointments.
-- Use web_search for general questions or anything requiring current information.
+- Use web_search for general questions or anything requiring current information. When search snippets don't contain enough detail (e.g. tech specs, full articles), follow up with fetch_url on the most relevant result's URL.
 - Use remember when the user explicitly asks you to remember something.
 - Use search_gmail for any email question including summaries — pass a broad query like "recent emails" if no specific topic is mentioned.
-- Use search_documents when the user asks about a document, file, note, or personal record they have stored.
+- Use search_documents when the user asks about ANY personal file — CV, resume, transcript, photos, receipts, tax docs. Never guess the content; always call the tool first.
 - Keep answers concise and natural.
 """
     if voice:
@@ -77,7 +88,7 @@ Rules:
         facts = "\n".join(f"  - {m.content}" for m in personal_mems)
         base += f"\n## What I know about {member_name}:\n{facts}\n"
     else:
-        base += f"\n## What I know about {member_name}:\n  - Nothing yet.\n"
+        base += f"\n## What I know about {member_name}:\n  - Nothing yet. Learn their name and preferences.\n"
     return base
 
 
@@ -140,6 +151,7 @@ def chat(member_id: str = "parent_1", voice: bool = False):
     mode = "voice" if voice else "text"
     print(f"Elvis CLI — model: {OLLAMA_MODEL} | member: {member_id} | db: {DB_PATH} | mode: {mode}")
     if voice:
+        warmup()
         print("Speak your message. Ctrl-C to exit.\n")
         speak("Hi, I'm Elvis. How can I help you?")
         _wait_for_tts()

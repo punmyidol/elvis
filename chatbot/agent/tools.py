@@ -6,6 +6,8 @@ Each tool wraps one of the core modules.
 """
 
 import os
+import re
+import urllib.request
 from datetime import datetime, timedelta
 from langchain_core.tools import tool
 from ddgs import DDGS
@@ -56,6 +58,30 @@ def web_search(query: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# URL fetch — retrieve full page text for detail pages (specs, articles, etc.)
+# ---------------------------------------------------------------------------
+
+@tool
+def fetch_url(url: str) -> str:
+    """
+    Fetch the full text content of a webpage. Use this after web_search when
+    you need the actual page content — for example, to read tech specs, article
+    bodies, or detailed information that search snippets don't include.
+    """
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            raw = resp.read().decode("utf-8", errors="ignore")
+        # Strip tags, collapse whitespace
+        text = re.sub(r"<[^>]+>", " ", raw)
+        text = re.sub(r"[ \t]+", " ", text)
+        text = re.sub(r"\n{3,}", "\n\n", text)
+        return text[:8000]
+    except Exception as e:
+        return f"Failed to fetch URL: {e}"
+
+
+# ---------------------------------------------------------------------------
 # News — always from cache, never live
 # ---------------------------------------------------------------------------
 
@@ -98,11 +124,12 @@ def get_calendar(query: str, member_id: str = "", days_ahead: int = 7) -> str:
 # ---------------------------------------------------------------------------
 
 @tool
-def remember(fact: str, member_id: str, scope: str = "personal") -> str:
+def remember(fact: str, scope: str = "personal") -> str:
     """
     Explicitly save an important fact to memory.
     scope: 'personal' (about this family member) or 'shared' (about the whole family).
     Use this when the user explicitly asks Elvis to remember something.
+    Do NOT pass a member_id — it is resolved automatically.
     """
     from agent.memory import create_memory_manager
     mm = create_memory_manager()
@@ -110,7 +137,7 @@ def remember(fact: str, member_id: str, scope: str = "personal") -> str:
     if scope == "shared":
         mm.save_shared_memory(fact, importance=4, keywords=keywords)
     else:
-        mm.save_member_memory(member_id, fact, importance=4, keywords=keywords)
+        mm.save_member_memory(_current_member_id, fact, importance=4, keywords=keywords)
     return f"Got it — I'll remember: {fact}"
 
 
@@ -221,7 +248,7 @@ def update_profile(interests: str) -> str:
 # ---------------------------------------------------------------------------
 
 ELVIS_TOOLS = [
-    get_current_time, web_search, get_news, get_calendar, remember, update_profile,
+    get_current_time, web_search, fetch_url, get_news, get_calendar, remember, update_profile,
     search_gmail, search_documents,
     list_documents, read_document, write_document, delete_document, move_document,
 ]

@@ -73,6 +73,21 @@ def _pack(vec: List[float]) -> bytes:
 
 
 # ---------------------------------------------------------------------------
+# Clear
+# ---------------------------------------------------------------------------
+
+def clear_emails(db_path: str = DB_PATH):
+    """Delete all stored emails (metadata + vectors)."""
+    with sqlite3.connect(db_path) as conn:
+        conn.enable_load_extension(True)
+        sqlite_vec.load(conn)
+        conn.enable_load_extension(False)
+        conn.execute("DELETE FROM email_vec_metadata")
+        conn.execute("DELETE FROM email_vec_items")
+        conn.commit()
+
+
+# ---------------------------------------------------------------------------
 # Write
 # ---------------------------------------------------------------------------
 

@@ -2,7 +2,6 @@
 voice/stt.py
 
 Speech-to-text using mlx-whisper (MLX-accelerated, M3 Neural Engine).
-Replaces faster-whisper with mlx-native transcription.
 """
 
 import queue
@@ -17,11 +16,19 @@ CHUNK_SIZE = 1600          # 0.1 s per chunk
 BUFFER_SECONDS = 2.0
 RMS_THRESHOLD = 0.01
 TRANSCRIBE_INTERVAL = 0.5  # seconds between transcriptions
-MODEL_REPO = "mlx-community/whisper-medium-mlx"
+MODEL_REPO = "mlx-community/whisper-base-mlx"
 
 
 def _rms(x: np.ndarray) -> float:
     return float(np.sqrt(np.mean(x**2)))
+
+
+def warmup():
+    """Pre-load the Whisper model so the first real transcription isn't slow."""
+    print("[STT] Loading Whisper model...", flush=True)
+    silence = np.zeros(SAMPLE_RATE, dtype=np.float32)
+    mlx_whisper.transcribe(silence, path_or_hf_repo=MODEL_REPO)
+    print("[STT] Model ready.", flush=True)
 
 
 def listen_once(timeout: float = 5.0, silence_threshold: float = RMS_THRESHOLD) -> str:
@@ -39,8 +46,8 @@ def listen_once(timeout: float = 5.0, silence_threshold: float = RMS_THRESHOLD) 
     Returns:
         Transcribed string, or "" if no speech detected within timeout.
     """
-    SPEECH_START_CHUNKS = 3                              # 0.3s to confirm speech
-    END_SILENCE_CHUNKS = int(0.8 / (CHUNK_SIZE / SAMPLE_RATE))  # 0.8s of silence = EOU
+    SPEECH_START_CHUNKS = 3
+    END_SILENCE_CHUNKS = int(0.8 / (CHUNK_SIZE / SAMPLE_RATE))
 
     audio_q: queue.Queue = queue.Queue()
 
@@ -89,7 +96,7 @@ def listen_once(timeout: float = 5.0, silence_threshold: float = RMS_THRESHOLD) 
                     silence_run += 1
                     if silence_run >= END_SILENCE_CHUNKS:
                         audio = np.concatenate(utterance_chunks)
-                        result = mlx_whisper.transcribe(audio, path_or_hf_repo=MODEL_REPO, language="th", task="translate")
+                        result = mlx_whisper.transcribe(audio, path_or_hf_repo=MODEL_REPO)
                         return result.get("text", "").strip()
 
 
@@ -138,7 +145,7 @@ def stream_transcribe(on_text, stop_event=None, silence_threshold: float = RMS_T
                 continue
 
             last_transcribe = time.time()
-            result = mlx_whisper.transcribe(buffer, path_or_hf_repo=MODEL_REPO, language="th", task="translate")
+            result = mlx_whisper.transcribe(buffer, path_or_hf_repo=MODEL_REPO)
             text = result.get("text", "").strip()
             if text:
                 on_text(text)

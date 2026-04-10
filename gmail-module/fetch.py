@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from auth import get_gmail_service
 from config import INBOX_MAX, DB_PATH
-from store import EmailRecord, init_email_tables, upsert_email
+from store import EmailRecord, init_email_tables, upsert_email, clear_emails
 
 
 def _decode_body(payload: dict) -> str:
@@ -105,6 +105,9 @@ def main():
 
     print(f"\nFetching {args.count} emails from inbox...")
     emails = fetch_inbox(max_results=args.count)
+
+    print("\nClearing old emails...")
+    clear_emails()
 
     print(f"\nEmbedding and storing {len(emails)} emails to {DB_PATH}...")
     ok = sum(1 for e in emails if upsert_email(e))
