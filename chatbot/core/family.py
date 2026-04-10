@@ -28,29 +28,11 @@ class NewsTopic:
     scope: str              # "personal" | "shared"
 
 
-# ---------------------------------------------------------------------------
-# Default family setup — edit these to match your family
-# ---------------------------------------------------------------------------
-
-DEFAULT_MEMBERS = [
-    {"id": "parent_1", "name": "Pon Chalermpong", "role": "parent"},
-    {"id": "parent_2", "name": "Parent 2", "role": "parent"},
-    {"id": "kid_1",    "name": "Kid 1",    "role": "kid"},
-    {"id": "kid_2",    "name": "Kid 2",    "role": "kid"},
-]
-
 DEFAULT_SHARED_TOPICS = [
     "local news",
     "weather",
     "health and wellness",
 ]
-
-DEFAULT_PERSONAL_TOPICS = {
-    "parent_1": ["business news", "technology"],
-    "parent_2": ["lifestyle", "cooking"],
-    "kid_1":    ["gaming", "sports"],
-    "kid_2":    ["music", "movies"],
-}
 
 # ---------------------------------------------------------------------------
 # DB initialisation — creates ALL tables including vector store
@@ -120,10 +102,6 @@ def init_db(db_path: str = DB_PATH):
             );
 
         """)
-        # Rename Parent 1 placeholder if still present
-        conn.execute(
-            "UPDATE family_members SET name='Pon Chalermpong' WHERE id='parent_1' AND name='Parent 1'"
-        )
         conn.commit()
 
     # Init vector tables separately (requires sqlite_vec extension)
@@ -132,16 +110,8 @@ def init_db(db_path: str = DB_PATH):
 
 
 def seed_defaults(db_path: str = DB_PATH):
-    """Insert default family members and topics if not already present."""
+    """Insert shared news topics if not already present."""
     with sqlite3.connect(db_path) as conn:
-        # Members
-        for m in DEFAULT_MEMBERS:
-            conn.execute(
-                "INSERT OR IGNORE INTO family_members (id, name, role) VALUES (?, ?, ?)",
-                (m["id"], m["name"], m["role"]),
-            )
-
-        # Shared topics — only insert if table is empty for shared
         existing_shared = conn.execute(
             "SELECT COUNT(*) FROM member_news_topics WHERE scope='shared'"
         ).fetchone()[0]
@@ -151,19 +121,6 @@ def seed_defaults(db_path: str = DB_PATH):
                     "INSERT INTO member_news_topics (member_id, topic, scope) VALUES (?, ?, ?)",
                     ("shared", topic, "shared"),
                 )
-
-        # Personal topics — only insert if member has none
-        for member_id, topics in DEFAULT_PERSONAL_TOPICS.items():
-            existing = conn.execute(
-                "SELECT COUNT(*) FROM member_news_topics WHERE member_id=? AND scope='personal'",
-                (member_id,),
-            ).fetchone()[0]
-            if existing == 0:
-                for topic in topics:
-                    conn.execute(
-                        "INSERT INTO member_news_topics (member_id, topic, scope) VALUES (?, ?, ?)",
-                        (member_id, topic, "personal"),
-                    )
         conn.commit()
 
 
