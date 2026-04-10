@@ -136,7 +136,7 @@ def _delete_old_news(member_id: str, db_path: str = DB_PATH):
     # Clean up vectors for deleted news
     if old_ids:
         try:
-            from vector_store import delete_vector
+            from agent.vector_store import delete_vector
             for (old_id,) in old_ids:
                 delete_vector(str(old_id), "news")
         except Exception as e:
@@ -198,7 +198,7 @@ def fetch_and_cache_for_member(member_id: str, db_path: str = DB_PATH):
 
         # Embed each article — headline + summary combined for richer retrieval
         try:
-            from vector_store import upsert_vector
+            from agent.vector_store import upsert_vector
             for news_id, headline, summary in inserted:
                 embed_text = f"{headline}. {summary}"
                 upsert_vector(
@@ -249,7 +249,7 @@ def search_news_semantic(
     Semantic search over today's cached news for a member.
     Returns the most relevant NewsItems for the given query.
     """
-    from vector_store import search_similar
+    from agent.vector_store import search_similar
 
     today = date.today().isoformat()
     results = search_similar(
@@ -270,11 +270,24 @@ def search_news_semantic(
         news_by_content[combined] = item
 
     matched = []
-    for _source_type, content, _distance in results:
+    for _source_id, _source_type, content, _distance in results:
         if content in news_by_content:
             matched.append(news_by_content[content])
 
     return matched
+
+
+def get_personalized_news(member_id: str, top_k: int = 7, db_path: str = DB_PATH) -> List[NewsItem]:
+    """
+    Return up to top_k news items ranked by KNN similarity to the member's
+    interests profile. Falls back to topic-order (capped at top_k) if no
+    profile has been set.
+    """
+    from core.family import get_member_profile
+    interests = get_member_profile(member_id, db_path)
+    if interests:
+        return search_news_semantic(interests, member_id, top_k=top_k, db_path=db_path)
+    return get_news_for_member(member_id, db_path)[:top_k]
 
 
 def format_news_for_llm(news_items: List[NewsItem]) -> str:

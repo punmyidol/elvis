@@ -33,7 +33,7 @@ class NewsTopic:
 # ---------------------------------------------------------------------------
 
 DEFAULT_MEMBERS = [
-    {"id": "parent_1", "name": "Parent 1", "role": "parent"},
+    {"id": "parent_1", "name": "Pon Chalermpong", "role": "parent"},
     {"id": "parent_2", "name": "Parent 2", "role": "parent"},
     {"id": "kid_1",    "name": "Kid 1",    "role": "kid"},
     {"id": "kid_2",    "name": "Kid 2",    "role": "kid"},
@@ -68,6 +68,11 @@ def init_db(db_path: str = DB_PATH):
                 name TEXT NOT NULL,
                 role TEXT NOT NULL CHECK(role IN ('parent', 'kid')),
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS member_profiles (
+                member_id TEXT PRIMARY KEY,
+                interests TEXT NOT NULL DEFAULT ''
             );
 
             CREATE TABLE IF NOT EXISTS member_news_topics (
@@ -115,6 +120,10 @@ def init_db(db_path: str = DB_PATH):
             );
 
         """)
+        # Rename Parent 1 placeholder if still present
+        conn.execute(
+            "UPDATE family_members SET name='Pon Chalermpong' WHERE id='parent_1' AND name='Parent 1'"
+        )
         conn.commit()
 
     # Init vector tables separately (requires sqlite_vec extension)
@@ -208,4 +217,28 @@ def add_personal_topic(member_id: str, topic: str, db_path: str = DB_PATH):
 def remove_personal_topic(topic_id: int, db_path: str = DB_PATH):
     with sqlite3.connect(db_path) as conn:
         conn.execute("DELETE FROM member_news_topics WHERE id=?", (topic_id,))
+        conn.commit()
+
+
+# ---------------------------------------------------------------------------
+# Member profiles (interests for KNN news personalisation)
+# ---------------------------------------------------------------------------
+
+def get_member_profile(member_id: str, db_path: str = DB_PATH) -> str:
+    """Return the member's interests text, or '' if no profile set."""
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT interests FROM member_profiles WHERE member_id=?", (member_id,)
+        ).fetchone()
+    return row[0] if row else ""
+
+
+def upsert_member_profile(member_id: str, interests: str, db_path: str = DB_PATH):
+    """Create or overwrite the member's interests profile."""
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "INSERT INTO member_profiles (member_id, interests) VALUES (?, ?)"
+            " ON CONFLICT(member_id) DO UPDATE SET interests=excluded.interests",
+            (member_id, interests),
+        )
         conn.commit()

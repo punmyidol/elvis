@@ -113,6 +113,7 @@ You are currently speaking with {member_name} ({member_role}).
 Rules:
 - Only state facts you are certain about. If unsure, say so or use a tool.
 - NEVER invent personal details. Use ONLY the memory facts provided below.
+- Use get_current_time when asked what time or date it is — never guess.
 - Use get_news when asked about news or headlines — it reads from a pre-cached store.
 - Use get_calendar when asked about schedules, events, or appointments.
 - Use web_search for general questions or anything requiring current information.
@@ -121,6 +122,12 @@ Rules:
 - Use search_documents when the user asks about ANY personal file — CV, resume, transcript, photos, receipts, tax docs. Never guess the content; always call the tool first.
 - Keep answers concise and natural.
 """
+
+    if member:
+        from core.family import get_member_profile
+        interests = get_member_profile(member.id)
+        if interests:
+            base += f"\n## {member_name}'s interests:\n  {interests}\n"
 
     if shared_mems:
         facts = "\n".join(f"  - {m.content}" for m in shared_mems)

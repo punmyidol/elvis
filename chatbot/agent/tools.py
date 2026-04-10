@@ -23,6 +23,16 @@ def set_current_member(member_id: str):
 
 
 # ---------------------------------------------------------------------------
+# Time — real-world clock
+# ---------------------------------------------------------------------------
+
+@tool
+def get_current_time() -> str:
+    """Return the current local date and time. Use this whenever the user asks what time or date it is."""
+    return datetime.now().strftime("%A, %d %B %Y, %H:%M:%S")
+
+
+# ---------------------------------------------------------------------------
 # Web search — live DuckDuckGo
 # ---------------------------------------------------------------------------
 
@@ -57,11 +67,9 @@ def get_news(member_id: str = "") -> str:
     Use this whenever someone asks about news, headlines, or what's happening today.
     Do NOT pass a member_id — it is resolved automatically.
     """
-    from services.news import get_news_for_member, format_news_for_llm
+    from services.news import get_personalized_news, format_news_for_llm
     resolved_id = member_id.strip() if member_id.strip() else _current_member_id
-    print(f"[get_news] arg='{member_id}' resolved='{resolved_id}' _current='{_current_member_id}'")
-    items = get_news_for_member(resolved_id)
-    print(f"[get_news] found {len(items)} items for '{resolved_id}'")
+    items = get_personalized_news(resolved_id)
     return format_news_for_llm(items)
 
 
@@ -192,11 +200,28 @@ def move_document(old_name: str, new_name: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Profile — interests used to personalise news via KNN
+# ---------------------------------------------------------------------------
+
+@tool
+def update_profile(interests: str) -> str:
+    """
+    Save or update the current member's interest profile.
+    Used to personalise news via KNN — call this when the user describes
+    the topics, sports, industries, or subjects they care about.
+    interests: free-text, e.g. 'AI startups, crypto, EPL football, Thai politics'
+    """
+    from core.family import upsert_member_profile
+    upsert_member_profile(_current_member_id, interests)
+    return "Profile saved. News will now be personalised to your interests."
+
+
+# ---------------------------------------------------------------------------
 # Exported tool list
 # ---------------------------------------------------------------------------
 
 ELVIS_TOOLS = [
-    web_search, get_news, get_calendar, remember,
+    get_current_time, web_search, get_news, get_calendar, remember, update_profile,
     search_gmail, search_documents,
     list_documents, read_document, write_document, delete_document, move_document,
 ]
