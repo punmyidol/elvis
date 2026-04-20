@@ -19,3 +19,4 @@ credentials/
 profiles/
 commands
 goodnotes/
+.pytest_cache
