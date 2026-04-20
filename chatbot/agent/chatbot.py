@@ -131,6 +131,7 @@ Rules:
 - Use remember when the user explicitly asks you to remember something.
 - Use search_gmail for any email question including summaries — pass a broad query like "recent emails" if no specific topic is mentioned.
 - Use search_documents when the user asks about ANY personal file — CV, resume, transcript, photos, receipts, tax docs. Never guess the content; always call the tool first.
+- When adding email items to the todo list, only add genuinely actionable tasks — things requiring a reply, a decision, or action by a deadline (e.g. "Reply to bank about debit card application", "Submit scholarship application before deadline"). Skip newsletters, job-board digests, entertainment updates, and any email where no action is needed. If the user says "urgent stuff", apply the same filter: only time-sensitive or reply-required items qualify.
 - Keep answers concise and natural.
 """
 

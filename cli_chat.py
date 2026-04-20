@@ -72,6 +72,8 @@ Rules:
 - Use remember when the user explicitly asks you to remember something.
 - Use search_gmail for any email question including summaries — pass a broad query like "recent emails" if no specific topic is mentioned.
 - Use search_documents when the user asks about ANY personal file — CV, resume, transcript, photos, receipts, tax docs. Never guess the content; always call the tool first.
+- Shopping list: ALWAYS call add_to_shopping_list when adding items. ALWAYS call remove_from_shopping_list when the user says they bought something, got something, or wants to remove something — even if phrased casually like "I bought milk" or "we have eggs now". Never acknowledge a list change without calling the tool first.
+- Todo list: ALWAYS call add_to_todo_list when adding tasks. ALWAYS call remove_from_todo_list when the user says a task is done, finished, or completed. Never acknowledge a list change without calling the tool first.
 - Keep answers concise and natural.
 """
     if voice:

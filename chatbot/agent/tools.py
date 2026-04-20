@@ -167,8 +167,8 @@ def search_documents(query: str, source_filter: str = "") -> str:
     Use this for ANY question about files the user has stored — CV, resume, transcript,
     receipts, photos, notes, tax documents, or anything in the files/ folder.
     source_filter: use the EXACT filename when the user asks about a specific file
-    (e.g. "files/cv.txt" for CV questions, "files/transcript.pdf" for transcript).
-    Use "files/" only when searching across all files. Default empty searches everything.
+    (e.g. "elvis-files/cv.txt" for CV questions, "elvis-files/transcript.pdf" for transcript).
+    Use "elvis-files/" only when searching across all files. Default empty searches everything.
     ALWAYS use this tool before saying you don't know something about the user's personal files.
     """
     from services.news_rag import search_docs_logic
@@ -202,7 +202,16 @@ def write_document(filename: str, content: str) -> str:
     """
     Create a new file or overwrite an existing one with the given content.
     Use this to save a note, schedule, or list (e.g., "save a note that school starts at 8am").
+    Do NOT use this for shopping-list.md or todo.md — use the dedicated shopping/todo tools.
     """
+    _PROTECTED = {"shopping-list.md", "todo.md"}
+    base = filename.strip().lstrip("/").split("/")[-1]
+    if base in _PROTECTED:
+        return (
+            f"Cannot write '{base}' directly. "
+            "Use add_to_shopping_list / remove_from_shopping_list or "
+            "add_to_todo_list / remove_from_todo_list instead."
+        )
     from services.documents import write_document_logic
     return write_document_logic(filename, content)
 
@@ -227,6 +236,76 @@ def move_document(old_name: str, new_name: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Todo list — item-level CRUD on elvis-files/todo.md
+# ---------------------------------------------------------------------------
+
+@tool
+def get_todo_list() -> str:
+    """
+    Read and return the current todo list from elvis-files/<member>/todo.md.
+    Use this when the user asks what's on their todo list or what tasks they have.
+    """
+    from services.todo import get_todo_list_logic
+    return get_todo_list_logic(_current_member_id)
+
+@tool
+def add_to_todo_list(item: str) -> str:
+    """
+    Add a task or item to the todo list. Automatically deduplicates.
+    Use this when the user wants to add a task, reminder, or urgent item to their todo list.
+    """
+    from services.todo import add_to_todo_list_logic
+    return add_to_todo_list_logic(_current_member_id, item)
+
+@tool
+def remove_from_todo_list(item: str) -> str:
+    """
+    Remove a task from the todo list by name.
+    Tries exact match first, then substring match.
+    ALWAYS call this when the user says anything like:
+    'I did X', 'I finished X', 'X is done', 'remove X', 'delete X', 'cross off X',
+    'mark X as done', 'I completed X', or 'I took care of X'.
+    """
+    from services.todo import remove_from_todo_list_logic
+    return remove_from_todo_list_logic(_current_member_id, item)
+
+
+# ---------------------------------------------------------------------------
+# Shopping list — item-level CRUD on elvis-files/shopping-list.md
+# ---------------------------------------------------------------------------
+
+@tool
+def get_shopping_list() -> str:
+    """
+    Read and return the current shopping list from elvis-files/<member>/shopping-list.md.
+    Use this when the user asks what's on their shopping list.
+    """
+    from services.shopping import get_shopping_list_logic
+    return get_shopping_list_logic()
+
+@tool
+def add_to_shopping_list(item: str) -> str:
+    """
+    Add an item to the shopping list. Automatically deduplicates.
+    Use this when the user says 'add X to the shopping list' or 'I need to buy X'.
+    """
+    from services.shopping import add_to_shopping_list_logic
+    return add_to_shopping_list_logic(item)
+
+@tool
+def remove_from_shopping_list(item: str) -> str:
+    """
+    Remove an item from the shopping list by name.
+    Tries exact match first, then substring match.
+    ALWAYS call this when the user says anything like:
+    'I bought X', 'I got X', 'I already have X', 'remove X', 'delete X from the list',
+    'cross off X', 'take X off the list', 'we have X now', or 'don't need X anymore'.
+    """
+    from services.shopping import remove_from_shopping_list_logic
+    return remove_from_shopping_list_logic(item)
+
+
+# ---------------------------------------------------------------------------
 # Profile — interests used to personalise news via KNN
 # ---------------------------------------------------------------------------
 
@@ -244,6 +323,29 @@ def update_profile(interests: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Obsidian vault RAG
+# ---------------------------------------------------------------------------
+
+@tool
+def search_obsidian_notes(query: str) -> str:
+    """
+    Search the user's Obsidian vault and answer questions based on their personal notes.
+    Use this when the user asks about something they've written down, their personal knowledge
+    base, notes, or anything that might be in their Obsidian vault.
+    Do NOT use this for general web searches — use web_search for that.
+    """
+    from pathlib import Path
+    import sys as _sys
+    _root = Path(__file__).parents[2]
+    _obsidian_path = str(_root / "obsidian-module")
+    if _obsidian_path not in _sys.path:
+        _sys.path.insert(0, _obsidian_path)
+    from rag import ObsidianRAG
+    rag = ObsidianRAG(db_path=str(_root / "elvis.db"))
+    return rag.query(query)
+
+
+# ---------------------------------------------------------------------------
 # Exported tool list
 # ---------------------------------------------------------------------------
 
@@ -251,4 +353,7 @@ ELVIS_TOOLS = [
     get_current_time, web_search, fetch_url, get_news, get_calendar, remember, update_profile,
     search_gmail, search_documents,
     list_documents, read_document, write_document, delete_document, move_document,
+    get_todo_list, add_to_todo_list, remove_from_todo_list,
+    get_shopping_list, add_to_shopping_list, remove_from_shopping_list,
+    search_obsidian_notes,
 ]

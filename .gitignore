@@ -4,7 +4,6 @@ utils/
 live-asr/
 someshi.py
 temp.py
-todo
 __pycache__/
 data/
 .env
@@ -18,3 +17,5 @@ files/
 .claude/
 credentials/
 profiles/
+commands
+goodnotes/

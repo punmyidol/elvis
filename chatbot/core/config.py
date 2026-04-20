@@ -53,7 +53,7 @@ MAX_CONTEXT_TOKENS = 3000
 # ---------------------------------------------------------------------------
 # Documents
 # ---------------------------------------------------------------------------
-DOCUMENTS_DIR = os.getenv("ELVIS_DOCS_PATH", os.path.join(os.path.dirname(__file__), "sample-docs"))
+DOCUMENTS_DIR = os.getenv("ELVIS_DOCS_PATH", os.path.join(os.path.dirname(__file__), "..", "..", "elvis-files"))
 
 
 # ---------------------------------------------------------------------------
