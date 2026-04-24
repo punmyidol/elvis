@@ -24,7 +24,6 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from core.config import DB_PATH, OLLAMA_MODEL, OLLAMA_BASE_URL, CHATBOT_NAME, MAX_CONTEXT_TOKENS
 from agent.memory import MemoryManager, Memory
 from agent.tools import ELVIS_TOOLS
-from core.family import get_member
 
 
 # ---------------------------------------------------------------------------
@@ -66,7 +65,6 @@ def get_workflow():
     def chatbot_node(state: MessagesState, config: RunnableConfig) -> dict:
         member_id = config.get("configurable", {}).get("user_id", "parent_1")
         mm = MemoryManager()
-        member = get_member(member_id)
 
         latest_human = next(
             (_extract_text(m.content) for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
@@ -74,7 +72,7 @@ def get_workflow():
         )
 
         shared_mems, personal_mems = mm.get_relevant_memories(member_id, latest_human)
-        system_prompt = _build_system_prompt(member, shared_mems, personal_mems)
+        system_prompt = _build_system_prompt(member_id, shared_mems, personal_mems)
 
         trimmed = trim_messages(
             state["messages"],
@@ -103,23 +101,12 @@ def get_workflow():
 # System prompt
 # ---------------------------------------------------------------------------
 
-def _build_system_prompt(member, shared_mems: List[Memory], personal_mems: List[Memory]) -> str:
+def _build_system_prompt(member_id: str, shared_mems: List[Memory], personal_mems: List[Memory]) -> str:
     from datetime import datetime
-    member_name = member.name if member else "the user"
-    member_role = member.role if member else "family member"
-
-    from core.family import get_all_members
-    all_members = get_all_members()
-    roster = "\n".join(f"  - {m.name} ({m.role})" for m in all_members)
-
     today = datetime.now().strftime("%A, %d %B %Y")
 
-    base = f"""You are {CHATBOT_NAME}, a helpful and friendly personal home assistant for the {member_name} family.
-You are currently speaking with {member_name} ({member_role}).
+    base = f"""You are {CHATBOT_NAME}, a helpful and friendly personal home assistant.
 Today's date is {today}.
-
-## Family members:
-{roster}
 
 Rules:
 - Only state facts you are certain about. If unsure, say so or use a tool.
@@ -131,25 +118,16 @@ Rules:
 - Use remember when the user explicitly asks you to remember something.
 - Use search_gmail for any email question including summaries — pass a broad query like "recent emails" if no specific topic is mentioned.
 - Use search_documents when the user asks about ANY personal file — CV, resume, transcript, photos, receipts, tax docs. Never guess the content; always call the tool first.
-- When adding email items to the todo list, only add genuinely actionable tasks — things requiring a reply, a decision, or action by a deadline (e.g. "Reply to bank about debit card application", "Submit scholarship application before deadline"). Skip newsletters, job-board digests, entertainment updates, and any email where no action is needed. If the user says "urgent stuff", apply the same filter: only time-sensitive or reply-required items qualify.
 - Keep answers concise and natural.
 """
 
-    if member:
-        from core.family import get_member_profile
-        interests = get_member_profile(member.id)
-        if interests:
-            base += f"\n## {member_name}'s interests:\n  {interests}\n"
-
     if shared_mems:
         facts = "\n".join(f"  - {m.content}" for m in shared_mems)
-        base += f"\n## Shared family knowledge:\n{facts}\n"
+        base += f"\n## Shared knowledge:\n{facts}\n"
 
     if personal_mems:
         facts = "\n".join(f"  - {m.content}" for m in personal_mems)
-        base += f"\n## What I know about {member_name}:\n{facts}\n"
-    else:
-        base += f"\n## What I know about {member_name}:\n  - Nothing yet. Learn their name and preferences.\n"
+        base += f"\n## What I know about you:\n{facts}\n"
 
     return base
 

@@ -14,9 +14,10 @@ elvis.db-shm
 elvis.db-wal
 rag.db
 files/
-.claude/
+.claude
 credentials/
 profiles/
 commands
 goodnotes/
 .pytest_cache
+elvis-files/

@@ -2,8 +2,9 @@
 cli_chat.py — Talk to Elvis in the terminal.
 
 Usage (from project root):
-    python cli_chat.py
-    python cli_chat.py --member parent_1
+    python cli_chat.py                         # interactive
+    python cli_chat.py "whats the news today?" # one-shot
+    python cli_chat.py --voice                 # voice I/O
 """
 
 import argparse
@@ -12,7 +13,6 @@ import sys
 import os
 import time
 
-# Make chatbot/ importable
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "chatbot"))
 
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, trim_messages
@@ -22,8 +22,8 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 
-from core.config import DB_PATH, OLLAMA_MODEL, OLLAMA_BASE_URL, MAX_CONTEXT_TOKENS
-from core.family import init_db, seed_defaults, get_member
+from core.config import DB_PATH, OLLAMA_MODEL, OLLAMA_BASE_URL, MAX_CONTEXT_TOKENS, CHATBOT_NAME
+from core.db import init_db, DEFAULT_MEMBER_ID
 from agent.tools import ELVIS_TOOLS, set_current_member
 from agent.memory import MemoryManager
 from voice.stt import listen_once, warmup
@@ -44,23 +44,12 @@ def _extract_text(content) -> str:
     return ""
 
 
-def build_system_prompt(member, shared_mems, personal_mems, voice: bool = False) -> str:
+def build_system_prompt(member_id: str, shared_mems, personal_mems, voice: bool = False) -> str:
     from datetime import datetime
-    member_name = member.name if member else "the user"
-    member_role = member.role if member else "family member"
-
-    from core.family import get_all_members
-    all_members = get_all_members()
-    roster = "\n".join(f"  - {m.name} ({m.role})" for m in all_members)
-
     today = datetime.now().strftime("%A, %d %B %Y")
 
-    base = f"""You are Elvis, a helpful and friendly personal home assistant for the {member_name} family.
-You are currently speaking with {member_name} ({member_role}).
+    base = f"""You are {CHATBOT_NAME}, a helpful and friendly personal home assistant.
 Today's date is {today}.
-
-## Family members:
-{roster}
 
 Rules:
 - Only state facts you are certain about. If unsure, say so or use a tool.
@@ -72,25 +61,16 @@ Rules:
 - Use remember when the user explicitly asks you to remember something.
 - Use search_gmail for any email question including summaries — pass a broad query like "recent emails" if no specific topic is mentioned.
 - Use search_documents when the user asks about ANY personal file — CV, resume, transcript, photos, receipts, tax docs. Never guess the content; always call the tool first.
-- Shopping list: ALWAYS call add_to_shopping_list when adding items. ALWAYS call remove_from_shopping_list when the user says they bought something, got something, or wants to remove something — even if phrased casually like "I bought milk" or "we have eggs now". Never acknowledge a list change without calling the tool first.
-- Todo list: ALWAYS call add_to_todo_list when adding tasks. ALWAYS call remove_from_todo_list when the user says a task is done, finished, or completed. Never acknowledge a list change without calling the tool first.
 - Keep answers concise and natural.
 """
     if voice:
         base += "- Voice mode: avoid markdown, bullet points, and emojis. Speak in plain sentences.\n"
-    if member:
-        from core.family import get_member_profile
-        interests = get_member_profile(member.id)
-        if interests:
-            base += f"\n## {member_name}'s interests:\n  {interests}\n"
     if shared_mems:
         facts = "\n".join(f"  - {m.content}" for m in shared_mems)
-        base += f"\n## Shared family knowledge:\n{facts}\n"
+        base += f"\n## Shared knowledge:\n{facts}\n"
     if personal_mems:
         facts = "\n".join(f"  - {m.content}" for m in personal_mems)
-        base += f"\n## What I know about {member_name}:\n{facts}\n"
-    else:
-        base += f"\n## What I know about {member_name}:\n  - Nothing yet. Learn their name and preferences.\n"
+        base += f"\n## What I know about you:\n{facts}\n"
     return base
 
 
@@ -111,13 +91,12 @@ def make_workflow(member_id: str, voice: bool = False):
     def chatbot_node(state: MessagesState, config: RunnableConfig) -> dict:
         mid = config.get("configurable", {}).get("user_id", member_id)
         set_current_member(mid)
-        member = get_member(mid)
         latest = next(
             (_extract_text(m.content) for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
             "",
         )
         shared, personal = mm.get_relevant_memories(mid, latest)
-        system = build_system_prompt(member, shared, personal, voice=voice)
+        system = build_system_prompt(mid, shared, personal, voice=voice)
         trimmed = trim_messages(
             state["messages"],
             max_tokens=MAX_CONTEXT_TOKENS,
@@ -138,9 +117,8 @@ def make_workflow(member_id: str, voice: bool = False):
     return builder.compile(checkpointer=checkpointer)
 
 
-def chat(member_id: str = "parent_1", voice: bool = False):
+def chat(member_id: str = DEFAULT_MEMBER_ID, voice: bool = False, one_shot: str = ""):
     init_db(DB_PATH)
-    seed_defaults(DB_PATH)
     set_current_member(member_id)
 
     workflow = make_workflow(member_id, voice=voice)
@@ -151,7 +129,12 @@ def chat(member_id: str = "parent_1", voice: bool = False):
     mm = MemoryManager()
 
     mode = "voice" if voice else "text"
-    print(f"Elvis CLI — model: {OLLAMA_MODEL} | member: {member_id} | db: {DB_PATH} | mode: {mode}")
+    print(f"Elvis CLI — model: {OLLAMA_MODEL} | db: {DB_PATH} | mode: {mode}")
+
+    if one_shot:
+        _run_turn(one_shot, workflow, app_config, voice=False)
+        return
+
     if voice:
         warmup()
         print("Speak your message. Ctrl-C to exit.\n")
@@ -185,46 +168,49 @@ def chat(member_id: str = "parent_1", voice: bool = False):
         if voice:
             stop()
 
-        messages = [HumanMessage(content=user_input)]
-        print("Elvis: ", end="", flush=True)
+        _run_turn(user_input, workflow, app_config, voice=voice)
 
-        full_response = ""
-        for event in workflow.stream(
-            {"messages": messages},
-            config=app_config,
-            stream_mode="messages",
-        ):
-            if isinstance(event, tuple):
-                message, metadata = event
-                node = metadata.get("langgraph_node")
 
-                if node == "chatbot" and hasattr(message, "tool_calls") and message.tool_calls:
-                    for tc in message.tool_calls:
-                        print(f"\n[tool] {tc['name']}({tc.get('args', {})})", flush=True)
-                    print("Elvis: ", end="", flush=True)
+def _run_turn(user_input: str, workflow, app_config, voice: bool):
+    messages = [HumanMessage(content=user_input)]
+    print("Elvis: ", end="", flush=True)
 
-                if hasattr(message, "content") and message.content and node == "chatbot":
-                    print(message.content, end="", flush=True)
-                    full_response += message.content
-                    if voice:
-                        feed(message.content)
+    full_response = ""
+    for event in workflow.stream(
+        {"messages": messages},
+        config=app_config,
+        stream_mode="messages",
+    ):
+        if isinstance(event, tuple):
+            message, metadata = event
+            node = metadata.get("langgraph_node")
 
-        print()
+            if node == "chatbot" and hasattr(message, "tool_calls") and message.tool_calls:
+                for tc in message.tool_calls:
+                    print(f"\n[tool] {tc['name']}({tc.get('args', {})})", flush=True)
+                print("Elvis: ", end="", flush=True)
 
-        if voice and full_response:
-            flush()
-            drain()
-            time.sleep(2.1)
+            if hasattr(message, "content") and message.content and node == "chatbot":
+                print(message.content, end="", flush=True)
+                full_response += message.content
+                if voice:
+                    feed(message.content)
 
-        # Memory extraction disabled
+    print()
+
+    if voice and full_response:
+        flush()
+        drain()
+        time.sleep(2.1)
 
 
 def main():
     parser = argparse.ArgumentParser(description="Chat with Elvis in the terminal")
-    parser.add_argument("--member", default="parent_1", help="Family member ID")
+    parser.add_argument("query", nargs="?", default="", help="One-shot query (omit for interactive mode)")
+    parser.add_argument("--member", default=DEFAULT_MEMBER_ID, help="Member ID")
     parser.add_argument("--voice", action="store_true", help="Enable voice I/O (STT + TTS)")
     args = parser.parse_args()
-    chat(args.member, voice=args.voice)
+    chat(args.member, voice=args.voice, one_shot=args.query)
 
 
 if __name__ == "__main__":

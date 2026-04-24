@@ -1,3 +1,5 @@
 ollama
 pyyaml
 pytest
+watchdog
+sqlite-vec

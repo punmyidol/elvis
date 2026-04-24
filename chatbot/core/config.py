@@ -32,7 +32,7 @@ CALENDAR_LOOKAHEAD_DAYS = 30
 # News
 # ---------------------------------------------------------------------------
 NEWS_RESULTS_PER_TOPIC = 5
-NEWS_REFRESH_HOUR = 0   # midnight
+NEWS_REFRESH_HOUR = 0
 NEWS_REFRESH_MINUTE = 0
 NEWS_SUMMARY_MAX_WORDS = 50
 
@@ -51,30 +51,19 @@ CHATBOT_INTRO = "Hi, I am Elvis, your personal home assistant."
 MAX_CONTEXT_TOKENS = 3000
 
 # ---------------------------------------------------------------------------
-# Documents
+# Documents sandbox
 # ---------------------------------------------------------------------------
-DOCUMENTS_DIR = os.getenv("ELVIS_DOCS_PATH", os.path.join(os.path.dirname(__file__), "..", "..", "elvis-files"))
-
+DOCUMENTS_DIR = os.getenv(
+    "ELVIS_DOCS_PATH",
+    os.path.join(os.path.dirname(__file__), "..", "documents")
+)
 
 # ---------------------------------------------------------------------------
 # RAG / Vector store
 # ---------------------------------------------------------------------------
 EMBED_MODEL = os.getenv("ELVIS_EMBED_MODEL", "nomic-embed-text")
- 
-# How many results to pull from semantic search
+EMBED_DIMENSIONS = 768
 VECTOR_TOP_K = 5
- 
-# Document chunking — words per chunk when indexing files
-DOCUMENT_CHUNK_SIZE = 300
- 
-# sqlite-vec uses L2 distance — lower = more similar; 1.5 is a sensible cutoff
+DOCUMENT_CHUNK_SIZE = 400
+DOCUMENT_CHUNK_OVERLAP = 50
 VECTOR_DISTANCE_THRESHOLD = 1.5
- 
-# ---------------------------------------------------------------------------
-# RAG / Vector Store  ← NEW
-# ---------------------------------------------------------------------------
-EMBED_MODEL = os.getenv("ELVIS_EMBED_MODEL", "nomic-embed-text")
-EMBED_DIMENSIONS = 768          # nomic-embed-text output size — do not change
-VECTOR_TOP_K = 5                # number of results returned per semantic search
-DOCUMENT_CHUNK_SIZE = 400       # words per document chunk before embedding
-DOCUMENT_CHUNK_OVERLAP = 50     # words of overlap between consecutive chunks

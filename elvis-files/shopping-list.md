@@ -1,3 +1,0 @@
-# Shopping List
-
-- [ ] meat

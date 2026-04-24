@@ -23,7 +23,7 @@ from core.config import (
     DB_PATH, OLLAMA_MODEL, OLLAMA_BASE_URL,
     NEWS_RESULTS_PER_TOPIC, NEWS_SUMMARY_MAX_WORDS,
 )
-from core.family import get_member_topics, get_all_members
+from core.db import DEFAULT_MEMBER_ID, DEFAULT_TOPICS
 
 
 @dataclass
@@ -153,16 +153,14 @@ def _already_cached_today(member_id: str, topic: str, db_path: str = DB_PATH) ->
     return count > 0
 
 
-def fetch_and_cache_for_member(member_id: str, db_path: str = DB_PATH):
-    """Fetch + summarise + cache + embed all topics for one member."""
+def fetch_and_cache_for_member(member_id: str = DEFAULT_MEMBER_ID, db_path: str = DB_PATH):
+    """Fetch + summarise + cache + embed all topics."""
     today = date.today().isoformat()
     _delete_old_news(member_id, db_path)
 
-    topics = get_member_topics(member_id, db_path)
-    print(f"[News] Refreshing {len(topics)} topics for {member_id}...")
+    print(f"[News] Refreshing {len(DEFAULT_TOPICS)} topics for {member_id}...")
 
-    for topic_obj in topics:
-        topic = topic_obj.topic
+    for topic in DEFAULT_TOPICS:
 
         if _already_cached_today(member_id, topic, db_path):
             print(f"[News] Already cached: {topic} for {member_id}")
@@ -213,11 +211,9 @@ def fetch_and_cache_for_member(member_id: str, db_path: str = DB_PATH):
 
 
 def refresh_all_members(db_path: str = DB_PATH):
-    """Midnight job — refresh news for every family member."""
-    members = get_all_members(db_path)
-    print(f"[News] Starting midnight refresh for {len(members)} members...")
-    for member in members:
-        fetch_and_cache_for_member(member.id, db_path)
+    """Midnight job — refresh news."""
+    print("[News] Starting midnight refresh...")
+    fetch_and_cache_for_member(DEFAULT_MEMBER_ID, db_path)
     print("[News] Midnight refresh complete.")
 
 
@@ -277,16 +273,8 @@ def search_news_semantic(
     return matched
 
 
-def get_personalized_news(member_id: str, top_k: int = 7, db_path: str = DB_PATH) -> List[NewsItem]:
-    """
-    Return up to top_k news items ranked by KNN similarity to the member's
-    interests profile. Falls back to topic-order (capped at top_k) if no
-    profile has been set.
-    """
-    from core.family import get_member_profile
-    interests = get_member_profile(member_id, db_path)
-    if interests:
-        return search_news_semantic(interests, member_id, top_k=top_k, db_path=db_path)
+def get_personalized_news(member_id: str = DEFAULT_MEMBER_ID, top_k: int = 7, db_path: str = DB_PATH) -> List[NewsItem]:
+    """Return up to top_k news items for today."""
     return get_news_for_member(member_id, db_path)[:top_k]
 
 

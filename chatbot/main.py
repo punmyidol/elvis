@@ -12,7 +12,7 @@ import random
 import streamlit as st
 from langchain_core.messages import AIMessage, HumanMessage
 
-from core.family import init_db, seed_defaults, get_member
+from core.db import init_db
 from agent.memory import create_memory_manager
 from services.elvis_calendar import sync_calendar, get_last_sync_time
 from services.news import is_news_cached_today
@@ -34,8 +34,22 @@ LOADING_MESSAGES = [
 def startup():
     """Initialise DB, seed defaults, sync calendar, start scheduler."""
     init_db(DB_PATH)
-    seed_defaults(DB_PATH)
     sync_calendar(DB_PATH)
+
+    from services.obsidian import VaultIndexer
+    import sqlite3 as _sq
+    import threading as _th
+    indexer = VaultIndexer(db_path=DB_PATH)
+    _cold = _sq.connect(DB_PATH).execute("SELECT COUNT(*) FROM vault_index_meta").fetchone()[0] == 0
+    if _cold:
+        _th.Thread(target=indexer.full_reindex, daemon=True).start()
+        print("[Elvis] Obsidian cold reindex started in background.")
+    else:
+        indexer.full_reindex()
+    obs = indexer.start_watcher()
+    obs.start()
+    print("[Elvis] Obsidian vault watcher started.")
+
     from core.scheduler import create_scheduler
     scheduler = create_scheduler(db_path=DB_PATH)
     scheduler.start()
@@ -82,8 +96,7 @@ app_config = {
     }
 }
 
-member = get_member(CURRENT_MEMBER_ID)
-member_name = member.name if member else "User"
+member_name = "User"
 
 # ---------------------------------------------------------------------------
 # Sidebar
