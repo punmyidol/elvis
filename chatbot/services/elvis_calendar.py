@@ -51,12 +51,7 @@ def sync_calendar(db_path: str = DB_PATH) -> int:
         return 0
 
     try:
-        client = caldav.DAVClient(
-            url=ICLOUD_CALDAV_URL,
-            username=ICLOUD_EMAIL,
-            password=ICLOUD_APP_PASSWORD,
-        )
-        principal = client.principal()
+        _, principal = _get_client()
         calendars = principal.calendars()
 
         now = datetime.now(timezone.utc)
@@ -64,36 +59,48 @@ def sync_calendar(db_path: str = DB_PATH) -> int:
         synced = 0
         now_str = datetime.now().isoformat()
 
+        from icalendar import Calendar as ICal
+        import datetime as _dt
+
         with sqlite3.connect(db_path) as conn:
             for cal in calendars:
                 cal_id = str(cal.url).rstrip("/").split("/")[-1]
                 try:
                     events = cal.date_search(start=now, end=end, expand=True)
                     for event in events:
-                        vevent = event.vobject_instance.vevent
-                        uid = str(vevent.uid.value)
-                        title = str(vevent.summary.value) if hasattr(vevent, "summary") else "Untitled"
-                        description = str(vevent.description.value) if hasattr(vevent, "description") else ""
-
-                        # Parse start/end — handle all-day (date) vs datetime
-                        start = vevent.dtstart.value
-                        end_val = vevent.dtend.value if hasattr(vevent, "dtend") else start
-
-                        start_str = start.isoformat() if hasattr(start, "isoformat") else str(start)
-                        end_str = end_val.isoformat() if hasattr(end_val, "isoformat") else str(end_val)
-
-                        conn.execute("""
-                            INSERT INTO calendar_cache (id, title, start_dt, end_dt, member_ids, description, calendar_id, last_synced)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                            ON CONFLICT(id) DO UPDATE SET
-                                title=excluded.title,
-                                start_dt=excluded.start_dt,
-                                end_dt=excluded.end_dt,
-                                description=excluded.description,
-                                calendar_id=excluded.calendar_id,
-                                last_synced=excluded.last_synced
-                        """, (uid, title, start_str, end_str, "[]", description, cal_id, now_str))
-                        synced += 1
+                        try:
+                            cal_data = ICal.from_ical(event.data)
+                        except Exception:
+                            continue
+                        for component in cal_data.walk("VEVENT"):
+                            uid = str(component.get("UID", ""))
+                            if not uid:
+                                continue
+                            title = str(component.get("SUMMARY", "Untitled"))
+                            description = str(component.get("DESCRIPTION", ""))
+                            dtstart = component.get("DTSTART")
+                            dtend = component.get("DTEND") or component.get("DTSTART")
+                            if dtstart is None:
+                                continue
+                            start_val = dtstart.dt
+                            end_val = dtend.dt
+                            # Normalise date-only events to UTC midnight datetime
+                            if isinstance(start_val, _dt.date) and not isinstance(start_val, datetime):
+                                start_val = datetime(start_val.year, start_val.month, start_val.day, tzinfo=timezone.utc)
+                            if isinstance(end_val, _dt.date) and not isinstance(end_val, datetime):
+                                end_val = datetime(end_val.year, end_val.month, end_val.day, tzinfo=timezone.utc)
+                            conn.execute("""
+                                INSERT INTO calendar_cache (id, title, start_dt, end_dt, member_ids, description, calendar_id, last_synced)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                ON CONFLICT(id) DO UPDATE SET
+                                    title=excluded.title,
+                                    start_dt=excluded.start_dt,
+                                    end_dt=excluded.end_dt,
+                                    description=excluded.description,
+                                    calendar_id=excluded.calendar_id,
+                                    last_synced=excluded.last_synced
+                            """, (uid, title, start_val.isoformat(), end_val.isoformat(), "[]", description, cal_id, now_str))
+                            synced += 1
                 except Exception as e:
                     print(f"[Calendar] Error reading calendar {cal}: {e}")
 
@@ -206,7 +213,7 @@ def get_last_sync_time(db_path: str = DB_PATH) -> Optional[str]:
 # CalDAV authenticated client (IPv4-only, HTTP/2 disabled — macOS EMSGSIZE bug)
 # ---------------------------------------------------------------------------
 
-def _get_client():
+def _get_client(retries: int = 3, backoff: float = 2.0):
     if not ICLOUD_EMAIL or not ICLOUD_APP_PASSWORD:
         raise RuntimeError("ICLOUD_EMAIL or ICLOUD_APP_PASSWORD not set.")
     try:
@@ -215,15 +222,24 @@ def _get_client():
     except ImportError as e:
         raise RuntimeError(f"Missing dependency: {e}. Run: pip install caldav niquests")
 
-    client = caldav.DAVClient(
-        url=ICLOUD_CALDAV_URL,
-        username=ICLOUD_EMAIL,
-        password=ICLOUD_APP_PASSWORD,
-    )
-    rs = niquests.Session(disable_http2=True, disable_http3=True, disable_ipv6=True)
-    rs.auth = (ICLOUD_EMAIL, ICLOUD_APP_PASSWORD)
-    client.session = rs
-    return client, client.principal()
+    import time
+    last_exc = None
+    for attempt in range(retries):
+        try:
+            client = caldav.DAVClient(
+                url=ICLOUD_CALDAV_URL,
+                username=ICLOUD_EMAIL,
+                password=ICLOUD_APP_PASSWORD,
+            )
+            rs = niquests.Session(disable_http2=True, disable_http3=True, disable_ipv6=True)
+            rs.auth = (ICLOUD_EMAIL, ICLOUD_APP_PASSWORD)
+            client.session = rs
+            return client, client.principal()
+        except Exception as e:
+            last_exc = e
+            if attempt < retries - 1:
+                time.sleep(backoff * (attempt + 1))
+    raise last_exc
 
 
 # ---------------------------------------------------------------------------

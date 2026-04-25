@@ -51,9 +51,11 @@ def _chunk(text: str) -> list[str]:
     return chunks
 
 
+_MAX_EMBED_CHARS = 2000
+
 def _embed(text: str) -> list[float]:
     client = ollama.Client(host=OLLAMA_BASE_URL)
-    response = client.embed(model=EMBED_MODEL, input=text)
+    response = client.embed(model=EMBED_MODEL, input=text[:_MAX_EMBED_CHARS])
     return response.embeddings[0]
 
 

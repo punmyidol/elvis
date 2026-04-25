@@ -121,6 +121,16 @@ def chat(member_id: str = DEFAULT_MEMBER_ID, voice: bool = False, one_shot: str 
     init_db(DB_PATH)
     set_current_member(member_id)
 
+    import threading as _th
+    from services.obsidian import VaultIndexer
+    _indexer = VaultIndexer(db_path=DB_PATH)
+    _th.Thread(target=_indexer.full_reindex, daemon=True).start()
+    _obs = _indexer.start_watcher()
+    _obs.start()
+
+    from services.elvis_calendar import sync_calendar
+    _th.Thread(target=sync_calendar, daemon=True).start()
+
     workflow = make_workflow(member_id, voice=voice)
     import uuid
     app_config: RunnableConfig = {
