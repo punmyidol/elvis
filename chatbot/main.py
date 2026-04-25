@@ -37,15 +37,10 @@ def startup():
     sync_calendar(DB_PATH)
 
     from services.obsidian import VaultIndexer
-    import sqlite3 as _sq
     import threading as _th
     indexer = VaultIndexer(db_path=DB_PATH)
-    _cold = _sq.connect(DB_PATH).execute("SELECT COUNT(*) FROM vault_index_meta").fetchone()[0] == 0
-    if _cold:
-        _th.Thread(target=indexer.full_reindex, daemon=True).start()
-        print("[Elvis] Obsidian cold reindex started in background.")
-    else:
-        indexer.full_reindex()
+    _th.Thread(target=indexer.full_reindex, daemon=True).start()
+    print("[Elvis] Obsidian reindex started in background.")
     obs = indexer.start_watcher()
     obs.start()
     print("[Elvis] Obsidian vault watcher started.")

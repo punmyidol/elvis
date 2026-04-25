@@ -27,6 +27,8 @@ ICLOUD_APP_PASSWORD = os.getenv("ICLOUD_APP_PASSWORD", "")
 ICLOUD_CALDAV_URL = "https://caldav.icloud.com"
 CALENDAR_SYNC_INTERVAL_MINUTES = 30
 CALENDAR_LOOKAHEAD_DAYS = 30
+# Only this calendar is writable; all others are read-only
+CALENDAR_WRITABLE_ID = "4CC66076-4617-4D77-A4BE-3425C8CC1BC6"
 
 # ---------------------------------------------------------------------------
 # News

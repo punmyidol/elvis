@@ -8,5 +8,7 @@ ddgs
 feedparser
 pdfplumber
 caldav
+icalendar
+niquests
 apscheduler
 pandas

@@ -53,7 +53,16 @@ def init_db(db_path: str = DB_PATH):
                 end_dt TEXT NOT NULL,
                 member_ids TEXT DEFAULT '[]',
                 description TEXT DEFAULT '',
+                calendar_id TEXT DEFAULT '',
                 last_synced TEXT DEFAULT CURRENT_TIMESTAMP
             );
         """)
         conn.commit()
+
+    # Migration: add calendar_id column if not present (existing DBs)
+    try:
+        with sqlite3.connect(db_path) as conn:
+            conn.execute("ALTER TABLE calendar_cache ADD COLUMN calendar_id TEXT DEFAULT ''")
+            conn.commit()
+    except sqlite3.OperationalError:
+        pass

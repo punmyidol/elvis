@@ -116,6 +116,89 @@ def get_calendar(query: str, member_id: str = "", days_ahead: int = 7) -> str:
     return format_events_for_llm(events)
 
 
+@tool
+def list_calendars() -> str:
+    """
+    List all available iCloud calendars with their IDs and names.
+    Use this when the user asks which calendars they have, or before creating
+    an event if you need to confirm the target calendar.
+    """
+    import json
+    from services.elvis_calendar import list_calendars as _list
+    try:
+        cals = _list()
+        return json.dumps(cals, indent=2)
+    except Exception as e:
+        return f"Failed to list calendars: {e}"
+
+
+@tool
+def create_calendar_event(
+    title: str,
+    start_time: str,
+    end_time: str,
+    description: str = "",
+) -> str:
+    """
+    Create a new event on iCloud Calendar.
+    start_time and end_time must be ISO 8601 strings (e.g. '2026-04-26T15:00:00').
+    Returns a confirmation with the event UID.
+    """
+    from services.elvis_calendar import create_event
+    try:
+        result = create_event(title, start_time, end_time, description)
+        return (
+            f"Event created: '{result['title']}' on {result['startTime']} → {result['endTime']}. "
+            f"UID: {result['uid']}"
+        )
+    except Exception as e:
+        return f"Failed to create event: {e}"
+
+
+@tool
+def delete_calendar_event(event_uid: str) -> str:
+    """
+    Permanently delete a calendar event by its UID.
+    ONLY call this on explicit user intent — this cannot be undone.
+    The UID is returned when an event is created, or visible in get_calendar output.
+    """
+    from services.elvis_calendar import delete_event
+    try:
+        result = delete_event(event_uid)
+        return f"Event deleted: {result['deleted']}"
+    except Exception as e:
+        return f"Failed to delete event: {e}"
+
+
+@tool
+def update_calendar_event(
+    event_uid: str,
+    title: str = "",
+    start_time: str = "",
+    end_time: str = "",
+    description: str = "",
+) -> str:
+    """
+    Update an existing calendar event. Only fields with non-empty values are changed.
+    event_uid is required. All other fields are optional — leave blank to keep current value.
+    """
+    from services.elvis_calendar import update_event
+    try:
+        result = update_event(
+            event_uid,
+            title=title or None,
+            start_time=start_time or None,
+            end_time=end_time or None,
+            description=description or None,
+        )
+        return (
+            f"Event updated: '{result['title']}' on {result['startTime']} → {result['endTime']}. "
+            f"UID: {result['uid']}"
+        )
+    except Exception as e:
+        return f"Failed to update event: {e}"
+
+
 # ---------------------------------------------------------------------------
 # Memory
 # ---------------------------------------------------------------------------
@@ -241,7 +324,8 @@ def move_document(old_name: str, new_name: str) -> str:
 # ---------------------------------------------------------------------------
 
 ELVIS_TOOLS = [
-    get_current_time, web_search, fetch_url, get_news, get_calendar, remember,
-    search_gmail, search_obsidian, search_documents,
+    get_current_time, web_search, fetch_url, get_news,
+    get_calendar, list_calendars, create_calendar_event, delete_calendar_event, update_calendar_event,
+    remember, search_gmail, search_obsidian, search_documents,
     list_documents, read_document, write_document, delete_document, move_document,
 ]
