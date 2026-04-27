@@ -167,7 +167,7 @@ class VaultIndexer:
 # ---------------------------------------------------------------------------
 
 class _DebouncedHandler(FileSystemEventHandler):
-    DEBOUNCE = 2.0
+    DEBOUNCE = 5.0
 
     def __init__(self, indexer: VaultIndexer):
         self._indexer = indexer

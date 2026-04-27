@@ -251,6 +251,30 @@ def search_obsidian(query: str) -> str:
     return search_obsidian_logic(query)
 
 
+@tool
+def read_obsidian_note(note_ref: str) -> str:
+    """
+    Read the full content of a specific Obsidian note by its filename or title.
+    note_ref can be an exact relative path (e.g. 'School/math.md') or a title substring.
+    Use this when the user asks to open, read, or show a specific note.
+    """
+    from services.obsidian import read_obsidian_note_logic
+    return read_obsidian_note_logic(note_ref)
+
+
+@tool
+def update_obsidian_note(note_ref: str, body: str, tags: list = None) -> str:
+    """
+    Overwrite the body of an existing Obsidian note.
+    note_ref: exact relative path or title substring to identify the note.
+    body: the full new Markdown content for the note body.
+    tags: optional list of tags to set in frontmatter (replaces existing tags).
+    Use this when the user asks to edit, update, or rewrite a note.
+    """
+    from services.obsidian import update_obsidian_note_logic
+    return update_obsidian_note_logic(note_ref, body, tags)
+
+
 # ---------------------------------------------------------------------------
 # RAG knowledge base
 # ---------------------------------------------------------------------------
@@ -326,6 +350,6 @@ def move_document(old_name: str, new_name: str) -> str:
 ELVIS_TOOLS = [
     get_current_time, web_search, fetch_url, get_news,
     get_calendar, list_calendars, create_calendar_event, delete_calendar_event, update_calendar_event,
-    remember, search_gmail, search_obsidian, search_documents,
+    remember, search_gmail, search_obsidian, read_obsidian_note, update_obsidian_note, search_documents,
     list_documents, read_document, write_document, delete_document, move_document,
 ]

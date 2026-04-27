@@ -32,6 +32,47 @@ from core.config import (
 )
 
 
+def _plan_my_day():
+    """Generate a personalized daily briefing and write it to documents/greet.txt."""
+    import os
+    from datetime import datetime, timedelta
+    from services.obsidian import search_obsidian_logic
+    from services.elvis_calendar import get_events_for_range, format_events_for_llm
+    from langchain_ollama import ChatOllama
+    from core.config import OLLAMA_MODEL, OLLAMA_BASE_URL, DOCUMENTS_DIR
+
+    now = datetime.now()
+    todos = search_obsidian_logic("todolist")
+    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    end = start + timedelta(days=1)
+    events = format_events_for_llm(get_events_for_range(start, end))
+
+    if now.hour < 12:
+        time_of_day = "morning"
+    elif now.hour < 18:
+        time_of_day = "afternoon"
+    else:
+        time_of_day = "evening"
+
+    prompt = (
+        f"Today is {now.strftime('%A, %d %B %Y')}. Good {time_of_day}.\n\n"
+        f"Calendar today:\n{events or 'No events.'}\n\n"
+        f"Pending todos (from Obsidian):\n{todos or 'No todos found.'}\n\n"
+        "Write a short, friendly daily briefing (2-4 sentences). "
+        "Mention the time of day, summarise the schedule, and note any todos. Be concise."
+    )
+
+    llm = ChatOllama(model=OLLAMA_MODEL, base_url=OLLAMA_BASE_URL)
+    result = llm.invoke(prompt)
+    text = result.content if hasattr(result, "content") else str(result)
+
+    greet_path = os.path.join(DOCUMENTS_DIR, "greet.txt")
+    os.makedirs(os.path.dirname(os.path.abspath(greet_path)), exist_ok=True)
+    with open(greet_path, "w") as f:
+        f.write(text)
+    print(f"[Elvis] Daily greeting written to {greet_path}")
+
+
 def create_scheduler(db_path: str = None) -> BackgroundScheduler:
     """
     Create and return a configured scheduler.
@@ -69,6 +110,16 @@ def create_scheduler(db_path: str = None) -> BackgroundScheduler:
         id="gmail_fetch",
         name="Gmail inbox fetch",
         replace_existing=True,
+    )
+
+    # Daily plan generation at 01:00
+    scheduler.add_job(
+        func=_plan_my_day,
+        trigger=CronTrigger(hour=1, minute=0),
+        id="plan_my_day",
+        name="Daily plan generation",
+        replace_existing=True,
+        misfire_grace_time=300,
     )
 
     # Obsidian incremental reindex every 30 min (catches files missed during downtime)

@@ -50,6 +50,7 @@ def build_system_prompt(member_id: str, shared_mems, personal_mems, voice: bool 
 
     base = f"""You are {CHATBOT_NAME}, a helpful and friendly personal home assistant.
 Today's date is {today}.
+Always respond in English regardless of the language of tool results or memory content.
 
 Rules:
 - Only state facts you are certain about. If unsure, say so or use a tool.
@@ -122,14 +123,27 @@ def chat(member_id: str = DEFAULT_MEMBER_ID, voice: bool = False, one_shot: str 
     set_current_member(member_id)
 
     import threading as _th
+    _ready_indexer = _th.Event()
+    _ready_calendar = _th.Event()
+
     from services.obsidian import VaultIndexer
     _indexer = VaultIndexer(db_path=DB_PATH)
-    _th.Thread(target=_indexer.full_reindex, daemon=True).start()
+
+    def _run_indexer():
+        _indexer.full_reindex()
+        _ready_indexer.set()
+
+    _th.Thread(target=_run_indexer, daemon=True).start()
     _obs = _indexer.start_watcher()
     _obs.start()
 
     from services.elvis_calendar import sync_calendar
-    _th.Thread(target=sync_calendar, daemon=True).start()
+
+    def _run_calendar():
+        sync_calendar()
+        _ready_calendar.set()
+
+    _th.Thread(target=_run_calendar, daemon=True).start()
 
     workflow = make_workflow(member_id, voice=voice)
     import uuid
@@ -140,6 +154,22 @@ def chat(member_id: str = DEFAULT_MEMBER_ID, voice: bool = False, one_shot: str 
 
     mode = "voice" if voice else "text"
     print(f"Elvis CLI — model: {OLLAMA_MODEL} | db: {DB_PATH} | mode: {mode}")
+
+    if not one_shot:
+        print("Initialising (indexer + calendar sync)...", end="", flush=True)
+        _ready_indexer.wait()
+        _ready_calendar.wait()
+        print(" ready.")
+
+        from core.scheduler import _plan_my_day
+        from core.config import DOCUMENTS_DIR
+        print("Generating daily briefing...", end="", flush=True)
+        _plan_my_day()
+        print(" done.")
+        _greet_path = os.path.join(DOCUMENTS_DIR, "greet.txt")
+        if os.path.exists(_greet_path):
+            with open(_greet_path) as _f:
+                print(f"\nElvis: {_f.read().strip()}\n")
 
     if one_shot:
         _run_turn(one_shot, workflow, app_config, voice=False)
@@ -201,8 +231,10 @@ def _run_turn(user_input: str, workflow, app_config, voice: bool):
                 print("Elvis: ", end="", flush=True)
 
             if hasattr(message, "content") and message.content and node == "chatbot":
-                print(message.content, end="", flush=True)
-                full_response += message.content
+                text = _extract_text(message.content)
+                if text:
+                    print(text, end="", flush=True)
+                    full_response += text
                 if voice:
                     feed(message.content)
 

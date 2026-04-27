@@ -7,10 +7,20 @@ and returns formatted strings for the Elvis LLM to reason over.
 No LLM calls here — all reasoning is handled by the main agent.
 """
 
+import importlib.util
 import os
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../gmail-module"))
+_GMAIL_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "../../gmail-module"))
+if _GMAIL_DIR not in sys.path:
+    sys.path.insert(0, _GMAIL_DIR)
+
+# Force gmail-module/config.py into sys.modules['config'] to prevent collision with
+# obsidian-module/config.py when both module dirs are on sys.path simultaneously.
+_cfg_spec = importlib.util.spec_from_file_location("config", os.path.join(_GMAIL_DIR, "config.py"))
+_cfg_mod = importlib.util.module_from_spec(_cfg_spec)
+sys.modules["config"] = _cfg_mod
+_cfg_spec.loader.exec_module(_cfg_mod)
 
 from store import search_emails, list_emails
 

@@ -119,6 +119,12 @@ Rules:
 - Use search_gmail for any email question including summaries — pass a broad query like "recent emails" if no specific topic is mentioned.
 - Use search_documents when the user asks about ANY personal file — CV, resume, transcript, photos, receipts, tax docs. Never guess the content; always call the tool first.
 - Keep answers concise and natural.
+
+## File Organization:
+- Obsidian: personal notes, school notes, and to-do lists (tasks without specific dates).
+  - To-do list is at `todolist.md` in the vault root — use update_obsidian_note to add items.
+- Documents folder: spreadsheets, CSVs, and anything that cannot be written in Markdown format.
+- Calendar: tasks and events that have specific start and end dates.
 """
 
     if shared_mems:

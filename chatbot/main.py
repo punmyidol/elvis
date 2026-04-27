@@ -36,6 +36,11 @@ def startup():
     init_db(DB_PATH)
     sync_calendar(DB_PATH)
 
+    import threading as _th_gmail
+    from core.scheduler import _fetch_gmail
+    _th_gmail.Thread(target=_fetch_gmail, daemon=True).start()
+    print("[Elvis] Gmail fetch started in background.")
+
     from services.obsidian import VaultIndexer
     import threading as _th
     indexer = VaultIndexer(db_path=DB_PATH)
@@ -45,10 +50,14 @@ def startup():
     obs.start()
     print("[Elvis] Obsidian vault watcher started.")
 
-    from core.scheduler import create_scheduler
+    from core.scheduler import create_scheduler, _plan_my_day
     scheduler = create_scheduler(db_path=DB_PATH)
     scheduler.start()
     print("[Elvis] Scheduler started.")
+
+    import threading as _th_plan
+    _th_plan.Thread(target=_plan_my_day, daemon=True).start()
+    print("[Elvis] Plan my day started in background.")
     return True
 
 
@@ -152,12 +161,18 @@ with st.sidebar:
 # Welcome message
 # ---------------------------------------------------------------------------
 
-has_memories = bool(shared_mems or personal_mems)
-welcome_message = AIMessage(
-    content=f"{CHATBOT_INTRO} Nice to see you, {member_name}! How can I help?"
-    if has_memories
-    else f"{CHATBOT_INTRO} What's your name?"
-)
+import os as _os
+_greet_path = _os.path.join(_os.path.dirname(__file__), "documents", "greet.txt")
+if _os.path.exists(_greet_path):
+    with open(_greet_path) as _f:
+        _greeting = _f.read().strip()
+else:
+    _greeting = (
+        f"Nice to see you, {member_name}! How can I help?"
+        if bool(shared_mems or personal_mems)
+        else "What's your name?"
+    )
+welcome_message = AIMessage(content=f"{CHATBOT_INTRO}\n\n{_greeting}")
 
 # ---------------------------------------------------------------------------
 # Chat history

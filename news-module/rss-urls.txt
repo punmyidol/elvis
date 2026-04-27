@@ -1,3 +1,4 @@
 https://feeds.bbci.co.uk/news/technology/rss.xml
 https://feeds.bbci.co.uk/news/world/rss.xml
 https://feeds.bbci.co.uk/news/science_and_environment/rss.xml
+https://www.bangkokpost.com/rss/data/topstories.xml

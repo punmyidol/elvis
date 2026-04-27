@@ -21,3 +21,5 @@ commands
 goodnotes/
 .pytest_cache
 elvis-files/
+samples/
+tables/
