@@ -101,7 +101,7 @@ def get_workflow():
 # System prompt
 # ---------------------------------------------------------------------------
 
-def _build_system_prompt(member_id: str, shared_mems: List[Memory], personal_mems: List[Memory]) -> str:
+def _build_system_prompt(member_id: str, shared_mems: List[Memory], personal_mems: List[Memory], voice: bool = False) -> str:
     from datetime import datetime
     today = datetime.now().strftime("%A, %d %B %Y")
 
@@ -134,6 +134,17 @@ Rules:
     if personal_mems:
         facts = "\n".join(f"  - {m.content}" for m in personal_mems)
         base += f"\n## What I know about you:\n{facts}\n"
+
+    if voice:
+        base += """
+## Voice conversation rules:
+- Open with natural acknowledgements: "Sure", "Let me check that", "One moment".
+- Signal tool use verbally: "Checking your calendar now…", "Let me search for that."
+- Never use lists, numbered steps, or markdown — always prose.
+- Prefer short sentences; break complex answers into 2–3 spoken beats with a pause word between.
+- Hedge uncertainty naturally: "I think…", "If I remember right…"
+- No bullet points, no bold text, no headers — this will be read aloud.
+"""
 
     return base
 
