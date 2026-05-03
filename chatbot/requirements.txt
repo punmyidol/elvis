@@ -12,3 +12,4 @@ icalendar
 niquests
 apscheduler
 pandas
+trafilatura

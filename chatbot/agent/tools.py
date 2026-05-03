@@ -6,6 +6,8 @@ LangChain tools for the Elvis ReAct agent.
 
 import os
 import re
+import sqlite3
+import time
 import urllib.request
 from datetime import datetime, timedelta
 from langchain_core.tools import tool
@@ -42,17 +44,45 @@ def web_search(query: str) -> str:
     Search the web using DuckDuckGo for general questions, current events,
     or anything requiring up-to-date information not in memory or news cache.
     """
+    from core.config import DB_PATH
+    now = time.time()
+
+    # Return cached result if fresh (< 30 min)
     try:
-        with DDGS() as ddgs:
-            results = list(ddgs.text(query, max_results=5))
-        if not results:
-            return "No results found."
-        return "\n\n".join(
-            f"**{r['title']}**\n{r['body']}\nSource: {r['href']}"
-            for r in results
-        )
-    except Exception as e:
-        return f"Search failed: {e}"
+        with sqlite3.connect(DB_PATH) as conn:
+            row = conn.execute(
+                "SELECT result, cached_at FROM web_search_cache WHERE query = ?", (query,)
+            ).fetchone()
+            if row and (now - row[1]) < 1800:
+                return row[0]
+    except Exception:
+        pass
+
+    last_err = None
+    for attempt in range(2):
+        try:
+            with DDGS() as ddgs:
+                results = list(ddgs.text(query, max_results=8))
+            if not results:
+                return "No results found."
+            output = "\n\n".join(
+                f"**{r['title']}**\n{r['body']}\nSource: {r['href']}"
+                for r in results
+            )
+            try:
+                with sqlite3.connect(DB_PATH) as conn:
+                    conn.execute(
+                        "INSERT OR REPLACE INTO web_search_cache(query, result, cached_at) VALUES (?, ?, ?)",
+                        (query, output, now),
+                    )
+            except Exception:
+                pass
+            return output
+        except Exception as e:
+            last_err = e
+            if attempt == 0:
+                time.sleep(1)
+    return f"Search failed: {last_err}"
 
 
 # ---------------------------------------------------------------------------
@@ -66,16 +96,32 @@ def fetch_url(url: str) -> str:
     you need the actual page content — for example, to read tech specs, article
     bodies, or detailed information that search snippets don't include.
     """
-    try:
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            raw = resp.read().decode("utf-8", errors="ignore")
-        text = re.sub(r"<[^>]+>", " ", raw)
-        text = re.sub(r"[ \t]+", " ", text)
-        text = re.sub(r"\n{3,}", "\n\n", text)
-        return text[:8000]
-    except Exception as e:
-        return f"Failed to fetch URL: {e}"
+    last_err = None
+    for attempt in range(2):
+        try:
+            # trafilatura extracts clean article body, ignoring nav/ads/scripts
+            try:
+                import trafilatura as _traf
+                downloaded = _traf.fetch_url(url)
+                text = _traf.extract(downloaded, include_comments=False, include_tables=False)
+                if text:
+                    return text[:8000]
+            except ImportError:
+                pass
+
+            # Fallback: urllib + regex tag stripping
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                raw = resp.read().decode("utf-8", errors="ignore")
+            text = re.sub(r"<[^>]+>", " ", raw)
+            text = re.sub(r"[ \t]+", " ", text)
+            text = re.sub(r"\n{3,}", "\n\n", text)
+            return text[:8000]
+        except Exception as e:
+            last_err = e
+            if attempt == 0:
+                time.sleep(1)
+    return f"Failed to fetch URL: {last_err}"
 
 
 # ---------------------------------------------------------------------------

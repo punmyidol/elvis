@@ -46,6 +46,12 @@ def init_db(db_path: str = DB_PATH):
                 fetched_date TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS web_search_cache (
+                query TEXT PRIMARY KEY,
+                result TEXT NOT NULL,
+                cached_at REAL NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS calendar_cache (
                 id TEXT PRIMARY KEY,
                 title TEXT NOT NULL,
