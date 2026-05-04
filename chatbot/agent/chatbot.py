@@ -117,6 +117,7 @@ Rules:
 - Use remember when the user explicitly asks you to remember something.
 - Use search_gmail for any email question including summaries — pass a broad query like "recent emails" if no specific topic is mentioned.
 - Use search_documents when the user asks about ANY personal file — CV, resume, transcript, photos, receipts, tax docs. Never guess the content; always call the tool first.
+- Use generate_cad_model when the user asks to create, design, or model a 3D part, shape, or object.
 - Keep answers concise and natural.
 
 ## File Organization:

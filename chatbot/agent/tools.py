@@ -12,6 +12,7 @@ import urllib.request
 from datetime import datetime, timedelta
 from langchain_core.tools import tool
 from ddgs import DDGS
+from agent.cad_tool import generate_cad_model
 
 # ---------------------------------------------------------------------------
 # Time
@@ -378,4 +379,5 @@ ELVIS_TOOLS = [
     get_calendar, list_calendars, create_calendar_event, delete_calendar_event, update_calendar_event,
     remember, search_gmail, search_obsidian, read_obsidian_note, update_obsidian_note, search_documents,
     list_documents, read_document, write_document, delete_document, move_document,
+    generate_cad_model,
 ]

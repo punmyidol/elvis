@@ -5,6 +5,13 @@ Single-user personal assistant for MacBook M3. Email, calendar, news, Obsidian n
 
 ---
 
+### Always
+- [ ] No hardcoded paths or secrets in code
+- [ ] New modules conform to BaseAgent interface
+- [ ] config.yaml updated if new settings added
+- [ ] .env.example updated if new secrets added
+- [ ] requirements.txt updated + versions pinned
+
 ### Stack
 - **LLM**: `qwen2.5:7b` via Ollama (`ELVIS_MODEL` env override)
 - **Orchestration**: LangGraph + SqliteSaver

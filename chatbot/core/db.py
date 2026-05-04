@@ -55,5 +55,16 @@ def init_db(db_path: str = DB_PATH):
                 calendar_id TEXT DEFAULT '',
                 last_synced TEXT DEFAULT CURRENT_TIMESTAMP
             );
+
+            CREATE TABLE IF NOT EXISTS cad_outputs (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                prompt      TEXT NOT NULL,
+                script      TEXT NOT NULL,
+                output_path TEXT,
+                model_used  TEXT NOT NULL,
+                attempts    INTEGER NOT NULL,
+                success     INTEGER NOT NULL,
+                created_at  TEXT DEFAULT CURRENT_TIMESTAMP
+            );
         """)
         conn.commit()

@@ -13,3 +13,8 @@ niquests
 apscheduler
 pandas
 trafilatura
+cadquery
+cq-warehouse
+cq-gears
+cadqueryhelper
+cq-gridfinity

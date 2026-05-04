@@ -21,3 +21,24 @@ export interface RunSummary {
   done: number
   failed: number
 }
+
+export type CadEventStatus = 'context' | 'generating' | 'executing' | 'validating' | 'retry' | 'done'
+
+export interface CadStatusEvent {
+  status: CadEventStatus
+  message: string
+  success?: boolean
+  basename?: string
+  attempts?: number
+  error?: string
+  script?: string
+}
+
+export interface CadOutput {
+  id: number
+  prompt: string
+  attempts: number
+  success: boolean
+  basename: string | null
+  created_at: string
+}

@@ -72,3 +72,18 @@ VECTOR_TOP_K = 5
 DOCUMENT_CHUNK_SIZE = 400
 DOCUMENT_CHUNK_OVERLAP = 50
 VECTOR_DISTANCE_THRESHOLD = 1.5
+
+# ---------------------------------------------------------------------------
+# CAD agent
+# ---------------------------------------------------------------------------
+CAD_MODEL = os.getenv("ELVIS_CAD_MODEL", "qwen2.5-coder:7b")
+CAD_OUTPUT_DIR = os.getenv(
+    "ELVIS_CAD_OUTPUT_DIR",
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "outputs", "cad"))
+)
+CAD_SCRIPTS_DIR = os.getenv(
+    "ELVIS_CAD_SCRIPTS_DIR",
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "outputs", "scripts"))
+)
+CAD_EXEC_TIMEOUT = 90
+CAD_MAX_RETRIES = 3
