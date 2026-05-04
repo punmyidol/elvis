@@ -22,7 +22,7 @@ from langgraph.graph import END, MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 
 from core.config import DB_PATH, OLLAMA_MODEL, OLLAMA_BASE_URL, CHATBOT_NAME, MAX_CONTEXT_TOKENS
-from agent.memory import MemoryManager, Memory
+from agent.memory import MemoryManager, Memory  # Memory used in type hints
 from agent.tools import ELVIS_TOOLS
 
 
@@ -63,7 +63,6 @@ def get_workflow():
     llm = get_llm()
 
     def chatbot_node(state: MessagesState, config: RunnableConfig) -> dict:
-        member_id = config.get("configurable", {}).get("user_id", "parent_1")
         mm = MemoryManager()
 
         latest_human = next(
@@ -71,8 +70,8 @@ def get_workflow():
             "",
         )
 
-        shared_mems, personal_mems = mm.get_relevant_memories(member_id, latest_human)
-        system_prompt = _build_system_prompt(member_id, shared_mems, personal_mems)
+        mems = mm.search_memories(latest_human)
+        system_prompt = _build_system_prompt(mems)
 
         trimmed = trim_messages(
             state["messages"],
@@ -101,7 +100,7 @@ def get_workflow():
 # System prompt
 # ---------------------------------------------------------------------------
 
-def _build_system_prompt(member_id: str, shared_mems: List[Memory], personal_mems: List[Memory], voice: bool = False) -> str:
+def _build_system_prompt(mems: List[Memory] = None, voice: bool = False) -> str:
     from datetime import datetime
     today = datetime.now().strftime("%A, %d %B %Y")
 
@@ -127,13 +126,9 @@ Rules:
 - Calendar: tasks and events that have specific start and end dates.
 """
 
-    if shared_mems:
-        facts = "\n".join(f"  - {m.content}" for m in shared_mems)
-        base += f"\n## Shared knowledge:\n{facts}\n"
-
-    if personal_mems:
-        facts = "\n".join(f"  - {m.content}" for m in personal_mems)
-        base += f"\n## What I know about you:\n{facts}\n"
+    if mems:
+        facts = "\n".join(f"  - {m.content}" for m in mems)
+        base += f"\n## What I know:\n{facts}\n"
 
     if voice:
         base += """
@@ -160,8 +155,6 @@ def ask_chatbot(
     image_mime: str = "image/jpeg",
 ) -> Generator[str, None, None]:
     """Stream the agent's response token by token."""
-    member_id = app_config["configurable"].get("user_id", "parent_1")
-    mm = MemoryManager()
     workflow = get_workflow()
 
     # If image attached, replace last HumanMessage with multimodal version

@@ -52,6 +52,15 @@ def init_vector_table(db_path: str = DB_PATH):
         sqlite_vec.load(conn)
         conn.enable_load_extension(False)
 
+        # Migration: drop tables that still have member_id column
+        info = conn.execute("PRAGMA table_info(doc_vec_metadata)").fetchall()
+        if any(row[1] == "member_id" for row in info):
+            conn.execute("DROP TABLE IF EXISTS doc_vec_items")
+            conn.execute("DROP TABLE IF EXISTS doc_vec_metadata")
+            conn.execute("DROP TABLE IF EXISTS news_vec_items")
+            conn.execute("DROP TABLE IF EXISTS news_vec_metadata")
+            conn.commit()
+
         conn.executescript(f"""
             CREATE VIRTUAL TABLE IF NOT EXISTS doc_vec_items USING vec0(
                 embedding float[{VECTOR_DIM}]
@@ -59,7 +68,6 @@ def init_vector_table(db_path: str = DB_PATH):
             CREATE TABLE IF NOT EXISTS doc_vec_metadata (
                 rowid     INTEGER PRIMARY KEY,
                 source_id TEXT NOT NULL,
-                member_id TEXT NOT NULL DEFAULT 'shared',
                 content   TEXT NOT NULL
             );
 
@@ -69,7 +77,6 @@ def init_vector_table(db_path: str = DB_PATH):
             CREATE TABLE IF NOT EXISTS news_vec_metadata (
                 rowid     INTEGER PRIMARY KEY,
                 source_id TEXT NOT NULL,
-                member_id TEXT NOT NULL DEFAULT 'shared',
                 content   TEXT NOT NULL
             );
         """)
@@ -100,17 +107,17 @@ def _tables(source_type: str) -> Tuple[str, str]:
     raise ValueError(f"Unknown source_type: {source_type!r}")
 
 
-def _upsert_one(conn, vec_table: str, meta_table: str, uid: str, content: str, member_id: str, packed: bytes):
+def _upsert_one(conn, vec_table: str, meta_table: str, uid: str, content: str, packed: bytes):
     row = conn.execute(f"SELECT rowid FROM {meta_table} WHERE source_id=?", (uid,)).fetchone()
     if row:
         rowid = row[0]
-        conn.execute(f"UPDATE {meta_table} SET content=?, member_id=? WHERE rowid=?", (content, member_id, rowid))
+        conn.execute(f"UPDATE {meta_table} SET content=? WHERE rowid=?", (content, rowid))
         conn.execute(f"DELETE FROM {vec_table} WHERE rowid=?", (rowid,))
         conn.execute(f"INSERT INTO {vec_table}(rowid, embedding) VALUES (?, ?)", (rowid, packed))
     else:
         cursor = conn.execute(
-            f"INSERT INTO {meta_table} (source_id, member_id, content) VALUES (?, ?, ?)",
-            (uid, member_id, content),
+            f"INSERT INTO {meta_table} (source_id, content) VALUES (?, ?)",
+            (uid, content),
         )
         conn.execute(f"INSERT INTO {vec_table}(rowid, embedding) VALUES (?, ?)", (cursor.lastrowid, packed))
 
@@ -123,7 +130,6 @@ def upsert_vector(
     source_id: str,
     source_type: str,
     content: str,
-    member_id: str = "shared",
     db_path: str = DB_PATH,
 ) -> int:
     """
@@ -146,7 +152,7 @@ def upsert_vector(
             except Exception as e:
                 print(f"[VectorStore] Embedding failed for '{uid}': {e}")
                 continue
-            _upsert_one(conn, vec_table, meta_table, uid, chunk, member_id, _pack(vector))
+            _upsert_one(conn, vec_table, meta_table, uid, chunk, _pack(vector))
             stored += 1
 
         conn.commit()
@@ -162,7 +168,6 @@ def upsert_vector(
 def search_similar(
     query: str,
     source_type: str,
-    member_id: Optional[str] = None,
     top_k: int = VECTOR_TOP_K,
     db_path: str = DB_PATH,
 ) -> List[Tuple[str, str, str, float]]:
@@ -179,8 +184,6 @@ def search_similar(
         return []
 
     packed = _pack(vector)
-    # Over-fetch only for member_id post-filter; type filtering is now free (separate table)
-    fetch_n = top_k * 4 if member_id else top_k
 
     with sqlite3.connect(db_path) as conn:
         conn.enable_load_extension(True)
@@ -188,23 +191,15 @@ def search_similar(
         conn.enable_load_extension(False)
 
         rows = conn.execute(f"""
-            SELECT m.source_id, m.content, m.member_id, v.distance
+            SELECT m.source_id, m.content, v.distance
             FROM {vec_table} v
             JOIN {meta_table} m ON v.rowid = m.rowid
             WHERE v.embedding MATCH ?
               AND k = ?
             ORDER BY v.distance
-        """, (packed, fetch_n)).fetchall()
+        """, (packed, top_k)).fetchall()
 
-    results = []
-    for sid, content, mid, dist in rows:
-        if member_id and mid != member_id and mid != "shared":
-            continue
-        results.append((sid, source_type, content, dist))
-        if len(results) >= top_k:
-            break
-
-    return results
+    return [(sid, source_type, content, dist) for sid, content, dist in rows]
 
 
 # ---------------------------------------------------------------------------

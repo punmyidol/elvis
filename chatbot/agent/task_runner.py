@@ -10,7 +10,6 @@ from langchain_ollama import ChatOllama
 
 from agent.chatbot import ask_chatbot
 from core.config import OLLAMA_MODEL, OLLAMA_BASE_URL
-from core.db import DEFAULT_MEMBER_ID
 
 RUNS_DIR = Path(__file__).parent.parent / "runs"
 
@@ -122,7 +121,6 @@ def resume_run(run_id: str) -> Generator[str, None, None]:
 
         config = {
             "configurable": {
-                "user_id": DEFAULT_MEMBER_ID,
                 "thread_id": f"run-{run_id}-task-{idx}",
             }
         }

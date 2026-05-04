@@ -44,7 +44,7 @@ NEWS_SUMMARY_MAX_WORDS = 50
 # ---------------------------------------------------------------------------
 # Memory
 # ---------------------------------------------------------------------------
-MAX_MEMORIES_PER_MEMBER = 50
+MAX_MEMORIES = 50
 MAX_FACT_WORDS = 10
 MAX_RELEVANT_MEMORIES = 5
 

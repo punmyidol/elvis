@@ -79,14 +79,14 @@ def create_scheduler(db_path: str = None) -> BackgroundScheduler:
     Call scheduler.start() after creation.
     Importing news/calendar here (not at module level) avoids circular imports.
     """
-    from services.news import refresh_all_members
+    from services.news import refresh_news
     from services.elvis_calendar import sync_calendar
 
     scheduler = BackgroundScheduler(timezone="Asia/Bangkok")  # adjust to your timezone
 
     # Midnight news refresh
     scheduler.add_job(
-        func=lambda: refresh_all_members(db_path) if db_path else refresh_all_members(),
+        func=lambda: refresh_news(db_path) if db_path else refresh_news(),
         trigger=CronTrigger(hour=NEWS_REFRESH_HOUR, minute=NEWS_REFRESH_MINUTE),
         id="midnight_news_refresh",
         name="Midnight news refresh",

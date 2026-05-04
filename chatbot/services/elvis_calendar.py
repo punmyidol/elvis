@@ -7,7 +7,6 @@ iCloud CalDAV client — read + write.
 """
 
 import sqlite3
-import json
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
@@ -25,7 +24,6 @@ class CalendarEvent:
     title: str
     start_dt: str
     end_dt: str
-    member_ids: List[str]
     description: str
     last_synced: str
 
@@ -90,8 +88,8 @@ def sync_calendar(db_path: str = DB_PATH) -> int:
                             if isinstance(end_val, _dt.date) and not isinstance(end_val, datetime):
                                 end_val = datetime(end_val.year, end_val.month, end_val.day, tzinfo=timezone.utc)
                             conn.execute("""
-                                INSERT INTO calendar_cache (id, title, start_dt, end_dt, member_ids, description, calendar_id, last_synced)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                INSERT INTO calendar_cache (id, title, start_dt, end_dt, description, calendar_id, last_synced)
+                                VALUES (?, ?, ?, ?, ?, ?, ?)
                                 ON CONFLICT(id) DO UPDATE SET
                                     title=excluded.title,
                                     start_dt=excluded.start_dt,
@@ -99,7 +97,7 @@ def sync_calendar(db_path: str = DB_PATH) -> int:
                                     description=excluded.description,
                                     calendar_id=excluded.calendar_id,
                                     last_synced=excluded.last_synced
-                            """, (uid, title, start_val.isoformat(), end_val.isoformat(), "[]", description, cal_id, now_str))
+                            """, (uid, title, start_val.isoformat(), end_val.isoformat(), description, cal_id, now_str))
                             synced += 1
                 except Exception as e:
                     print(f"[Calendar] Error reading calendar {cal}: {e}")
@@ -124,62 +122,45 @@ def _row_to_event(row) -> CalendarEvent:
         title=row[1],
         start_dt=row[2],
         end_dt=row[3],
-        member_ids=json.loads(row[4]),
-        description=row[5],
-        last_synced=row[6],
+        description=row[4],
+        last_synced=row[5],
     )
 
 
 def get_events_for_range(
     start: datetime,
     end: datetime,
-    member_id: Optional[str] = None,
     db_path: str = DB_PATH,
 ) -> List[CalendarEvent]:
     """Query calendar_cache for events in a datetime range."""
-    start_str = start.isoformat()
-    end_str = end.isoformat()
-
     with sqlite3.connect(db_path) as conn:
         rows = conn.execute(
-            """SELECT id, title, start_dt, end_dt, member_ids, description, last_synced
+            """SELECT id, title, start_dt, end_dt, description, last_synced
                FROM calendar_cache
                WHERE start_dt >= ? AND start_dt <= ?
                ORDER BY start_dt ASC""",
-            (start_str, end_str),
+            (start.isoformat(), end.isoformat()),
         ).fetchall()
-
-    events = [_row_to_event(r) for r in rows]
-
-    # Optionally filter by member_id
-    if member_id:
-        events = [
-            e for e in events
-            if not e.member_ids or member_id in e.member_ids
-        ]
-
-    return events
+    return [_row_to_event(r) for r in rows]
 
 
 def get_events_for_date(
     date: datetime,
-    member_id: Optional[str] = None,
     db_path: str = DB_PATH,
 ) -> List[CalendarEvent]:
     start = date.replace(hour=0, minute=0, second=0, microsecond=0)
     end = start + timedelta(days=1)
-    return get_events_for_range(start, end, member_id, db_path)
+    return get_events_for_range(start, end, db_path)
 
 
 def get_events_for_week(
     start: Optional[datetime] = None,
-    member_id: Optional[str] = None,
     db_path: str = DB_PATH,
 ) -> List[CalendarEvent]:
     if start is None:
         start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     end = start + timedelta(days=7)
-    return get_events_for_range(start, end, member_id, db_path)
+    return get_events_for_range(start, end, db_path)
 
 
 def format_events_for_llm(events: List[CalendarEvent]) -> str:
@@ -302,13 +283,13 @@ def create_event(
     now_str = datetime.now().isoformat()
     with sqlite3.connect(db_path) as conn:
         conn.execute("""
-            INSERT INTO calendar_cache (id, title, start_dt, end_dt, member_ids, description, calendar_id, last_synced)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO calendar_cache (id, title, start_dt, end_dt, description, calendar_id, last_synced)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 title=excluded.title, start_dt=excluded.start_dt, end_dt=excluded.end_dt,
                 description=excluded.description, calendar_id=excluded.calendar_id,
                 last_synced=excluded.last_synced
-        """, (uid, title, start_dt.isoformat(), end_dt.isoformat(), "[]", description, calendar_id, now_str))
+        """, (uid, title, start_dt.isoformat(), end_dt.isoformat(), description, calendar_id, now_str))
         conn.commit()
 
     return {"uid": uid, "calendarId": calendar_id, "title": title,

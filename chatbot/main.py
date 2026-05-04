@@ -15,7 +15,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from core.db import init_db
 from agent.memory import create_memory_manager
 from services.elvis_calendar import sync_calendar, get_last_sync_time
-from services.news import is_news_cached_today
+from services.news import is_news_cached_today as _is_news_cached_today
 from agent.chatbot import ask_chatbot, get_workflow
 from core.config import CHATBOT_INTRO, CHATBOT_NAME, DB_PATH
 
@@ -90,30 +90,20 @@ if "pending_image_bytes" not in st.session_state:
 if "pending_image_mime" not in st.session_state:
     st.session_state.pending_image_mime = None
 
-# Filler identity — will be replaced when member selection is built
-CURRENT_MEMBER_ID = "parent_1"
-
 app_config = {
     "configurable": {
-        "user_id": CURRENT_MEMBER_ID,
         "thread_id": st.session_state.thread_id,
     }
 }
-
-member_name = "User"
 
 # ---------------------------------------------------------------------------
 # Sidebar
 # ---------------------------------------------------------------------------
 
 mm = create_memory_manager()
-shared_mems = mm.get_shared_memories()
-personal_mems = mm.get_member_memories(CURRENT_MEMBER_ID)
+memories = mm.get_memories()
 
 with st.sidebar:
-    st.markdown(f"## 👤 {member_name}")
-    st.caption(f"ID: `{CURRENT_MEMBER_ID}`")
-
     with st.form("thread_form"):
         st.text_input("Conversation ID", key="thread_id")
         if st.form_submit_button("Switch"):
@@ -127,35 +117,23 @@ with st.sidebar:
     st.caption(f"Last synced: {last_sync or 'Never'}")
 
     st.markdown("## 📰 News")
-    cached = is_news_cached_today(CURRENT_MEMBER_ID, DB_PATH)
+    cached = _is_news_cached_today(DB_PATH)
     st.caption("✅ Today's news cached" if cached else "⏳ News refreshes at midnight")
 
     st.divider()
 
-    if shared_mems:
-        st.markdown("## 🏠 Family memories")
-        for m in shared_mems:
+    if memories:
+        st.markdown("## 🧠 Memories")
+        for m in memories:
             col1, col2 = st.columns([5, 1])
             with col1:
                 st.caption(f"{m.content} *(★{m.importance})*")
             with col2:
-                if st.button("🗑", key=f"shared_{m.id}"):
-                    mm.delete_memory(m.id, "shared")
+                if st.button("🗑", key=f"mem_{m.id}"):
+                    mm.delete_memory(m.id)
                     st.rerun()
-
-    if personal_mems:
-        st.markdown(f"## 🧠 {member_name}'s memories")
-        for m in personal_mems:
-            col1, col2 = st.columns([5, 1])
-            with col1:
-                st.caption(f"{m.content} *(★{m.importance})*")
-            with col2:
-                if st.button("🗑", key=f"personal_{m.id}"):
-                    mm.delete_memory(m.id, "personal")
-                    st.rerun()
-
-    if not shared_mems and not personal_mems:
-        st.caption("No memories yet. Start chatting!")
+    else:
+        st.caption("No memories yet.")
 
 # ---------------------------------------------------------------------------
 # Welcome message
@@ -167,11 +145,7 @@ if _os.path.exists(_greet_path):
     with open(_greet_path) as _f:
         _greeting = _f.read().strip()
 else:
-    _greeting = (
-        f"Nice to see you, {member_name}! How can I help?"
-        if bool(shared_mems or personal_mems)
-        else "What's your name?"
-    )
+    _greeting = "How can I help?" if memories else "How can I help?"
 welcome_message = AIMessage(content=f"{CHATBOT_INTRO}\n\n{_greeting}")
 
 # ---------------------------------------------------------------------------

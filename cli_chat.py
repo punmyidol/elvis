@@ -23,8 +23,8 @@ from langgraph.graph import END, MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 
 from core.config import DB_PATH, OLLAMA_MODEL, OLLAMA_BASE_URL, MAX_CONTEXT_TOKENS, CHATBOT_NAME
-from core.db import init_db, DEFAULT_MEMBER_ID
-from agent.tools import ELVIS_TOOLS, set_current_member
+from core.db import init_db
+from agent.tools import ELVIS_TOOLS
 from agent.memory import MemoryManager
 from voice.stt import listen_once, warmup
 from voice.tts import speak, stop, is_speaking, feed, flush, drain
@@ -44,7 +44,7 @@ def _extract_text(content) -> str:
     return ""
 
 
-def build_system_prompt(member_id: str, shared_mems, personal_mems, voice: bool = False) -> str:
+def build_system_prompt(mems=None, voice: bool = False) -> str:
     from datetime import datetime
     today = datetime.now().strftime("%A, %d %B %Y")
 
@@ -66,16 +66,13 @@ Rules:
 """
     if voice:
         base += "- Voice mode: avoid markdown, bullet points, and emojis. Speak in plain sentences.\n"
-    if shared_mems:
-        facts = "\n".join(f"  - {m.content}" for m in shared_mems)
-        base += f"\n## Shared knowledge:\n{facts}\n"
-    if personal_mems:
-        facts = "\n".join(f"  - {m.content}" for m in personal_mems)
-        base += f"\n## What I know about you:\n{facts}\n"
+    if mems:
+        facts = "\n".join(f"  - {m.content}" for m in mems)
+        base += f"\n## What I know:\n{facts}\n"
     return base
 
 
-def make_workflow(member_id: str, voice: bool = False):
+def make_workflow(voice: bool = False):
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     checkpointer = SqliteSaver(conn)
 
@@ -90,14 +87,12 @@ def make_workflow(member_id: str, voice: bool = False):
     mm = MemoryManager()
 
     def chatbot_node(state: MessagesState, config: RunnableConfig) -> dict:
-        mid = config.get("configurable", {}).get("user_id", member_id)
-        set_current_member(mid)
         latest = next(
             (_extract_text(m.content) for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
             "",
         )
-        shared, personal = mm.get_relevant_memories(mid, latest)
-        system = build_system_prompt(mid, shared, personal, voice=voice)
+        mems = mm.search_memories(latest)
+        system = build_system_prompt(mems, voice=voice)
         trimmed = trim_messages(
             state["messages"],
             max_tokens=MAX_CONTEXT_TOKENS,
@@ -118,9 +113,8 @@ def make_workflow(member_id: str, voice: bool = False):
     return builder.compile(checkpointer=checkpointer)
 
 
-def chat(member_id: str = DEFAULT_MEMBER_ID, voice: bool = False, one_shot: str = ""):
+def chat(voice: bool = False, one_shot: str = ""):
     init_db(DB_PATH)
-    set_current_member(member_id)
 
     import threading as _th
     _ready_indexer = _th.Event()
@@ -145,12 +139,11 @@ def chat(member_id: str = DEFAULT_MEMBER_ID, voice: bool = False, one_shot: str 
 
     _th.Thread(target=_run_calendar, daemon=True).start()
 
-    workflow = make_workflow(member_id, voice=voice)
+    workflow = make_workflow(voice=voice)
     import uuid
     app_config: RunnableConfig = {
-        "configurable": {"user_id": member_id, "thread_id": f"cli-{uuid.uuid4().hex[:8]}"}
+        "configurable": {"thread_id": f"cli-{uuid.uuid4().hex[:8]}"}
     }
-    mm = MemoryManager()
 
     mode = "voice" if voice else "text"
     print(f"Elvis CLI — model: {OLLAMA_MODEL} | db: {DB_PATH} | mode: {mode}")
@@ -249,10 +242,9 @@ def _run_turn(user_input: str, workflow, app_config, voice: bool):
 def main():
     parser = argparse.ArgumentParser(description="Chat with Elvis in the terminal")
     parser.add_argument("query", nargs="?", default="", help="One-shot query (omit for interactive mode)")
-    parser.add_argument("--member", default=DEFAULT_MEMBER_ID, help="Member ID")
     parser.add_argument("--voice", action="store_true", help="Enable voice I/O (STT + TTS)")
     args = parser.parse_args()
-    chat(args.member, voice=args.voice, one_shot=args.query)
+    chat(voice=args.voice, one_shot=args.query)
 
 
 if __name__ == "__main__":

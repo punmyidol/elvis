@@ -14,7 +14,7 @@ News cache manager — BBC RSS edition.
 import sqlite3
 import feedparser
 from datetime import date, timedelta
-from typing import List, Dict, Optional
+from typing import List, Dict
 from dataclasses import dataclass
 
 from langchain_ollama import ChatOllama
@@ -23,13 +23,12 @@ from core.config import (
     DB_PATH, OLLAMA_MODEL, OLLAMA_BASE_URL,
     NEWS_RESULTS_PER_TOPIC, NEWS_SUMMARY_MAX_WORDS,
 )
-from core.db import DEFAULT_MEMBER_ID, DEFAULT_TOPICS
+from core.db import DEFAULT_TOPICS
 
 
 @dataclass
 class NewsItem:
     id: int
-    member_id: str
     topic: str
     headline: str
     summary: str
@@ -118,22 +117,17 @@ def _fetch_from_rss(topic: str, max_results: int) -> List[dict]:
 # Cache management
 # ---------------------------------------------------------------------------
 
-def _delete_old_news(member_id: str, db_path: str = DB_PATH):
+def _delete_old_news(db_path: str = DB_PATH):
     yesterday = (date.today() - timedelta(days=7)).isoformat()
     with sqlite3.connect(db_path) as conn:
-        # Get IDs of old rows before deleting (for vector cleanup)
         old_ids = conn.execute(
-            "SELECT id FROM news_cache WHERE member_id=? AND fetched_date <= ?",
-            (member_id, yesterday),
+            "SELECT id FROM news_cache WHERE fetched_date <= ?",
+            (yesterday,),
         ).fetchall()
 
-        conn.execute(
-            "DELETE FROM news_cache WHERE member_id=? AND fetched_date <= ?",
-            (member_id, yesterday),
-        )
+        conn.execute("DELETE FROM news_cache WHERE fetched_date <= ?", (yesterday,))
         conn.commit()
 
-    # Clean up vectors for deleted news
     if old_ids:
         try:
             from agent.vector_store import delete_vector
@@ -143,27 +137,27 @@ def _delete_old_news(member_id: str, db_path: str = DB_PATH):
             print(f"[News] Vector cleanup failed: {e}")
 
 
-def _already_cached_today(member_id: str, topic: str, db_path: str = DB_PATH) -> bool:
+def _already_cached_today(topic: str, db_path: str = DB_PATH) -> bool:
     today = date.today().isoformat()
     with sqlite3.connect(db_path) as conn:
         count = conn.execute(
-            "SELECT COUNT(*) FROM news_cache WHERE member_id=? AND topic=? AND fetched_date=?",
-            (member_id, topic, today),
+            "SELECT COUNT(*) FROM news_cache WHERE topic=? AND fetched_date=?",
+            (topic, today),
         ).fetchone()[0]
     return count > 0
 
 
-def fetch_and_cache_for_member(member_id: str = DEFAULT_MEMBER_ID, db_path: str = DB_PATH):
+def fetch_and_cache(db_path: str = DB_PATH):
     """Fetch + summarise + cache + embed all topics."""
     today = date.today().isoformat()
-    _delete_old_news(member_id, db_path)
+    _delete_old_news(db_path)
 
-    print(f"[News] Refreshing {len(DEFAULT_TOPICS)} topics for {member_id}...")
+    print(f"[News] Refreshing {len(DEFAULT_TOPICS)} topics...")
 
     for topic in DEFAULT_TOPICS:
 
-        if _already_cached_today(member_id, topic, db_path):
-            print(f"[News] Already cached: {topic} for {member_id}")
+        if _already_cached_today(topic, db_path):
+            print(f"[News] Already cached: {topic}")
             continue
 
         articles = _fetch_from_rss(topic, NEWS_RESULTS_PER_TOPIC)
@@ -174,27 +168,25 @@ def fetch_and_cache_for_member(member_id: str = DEFAULT_MEMBER_ID, db_path: str 
         rows = []
         for a in articles:
             summary = _summarise(a["title"], a["body"])
-            rows.append((member_id, topic, a["title"], summary, a["url"], today))
+            rows.append((topic, a["title"], summary, a["url"], today))
 
         with sqlite3.connect(db_path) as conn:
             for row in rows:
                 conn.execute(
-                    "INSERT INTO news_cache (member_id, topic, headline, summary, url, fetched_date) "
-                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO news_cache (topic, headline, summary, url, fetched_date) "
+                    "VALUES (?, ?, ?, ?, ?)",
                     row,
                 )
             conn.commit()
 
-            # Get the IDs of inserted rows for vector embedding
             inserted = conn.execute(
                 "SELECT id, headline, summary FROM news_cache "
-                "WHERE member_id=? AND topic=? AND fetched_date=?",
-                (member_id, topic, today),
+                "WHERE topic=? AND fetched_date=?",
+                (topic, today),
             ).fetchall()
 
-        print(f"[News] Cached {len(rows)} articles for '{topic}' ({member_id})")
+        print(f"[News] Cached {len(rows)} articles for '{topic}'")
 
-        # Embed each article — headline + summary combined for richer retrieval
         try:
             from agent.vector_store import upsert_vector
             for news_id, headline, summary in inserted:
@@ -203,17 +195,16 @@ def fetch_and_cache_for_member(member_id: str = DEFAULT_MEMBER_ID, db_path: str 
                     source_type="news",
                     source_id=str(news_id),
                     content=embed_text,
-                    member_id=member_id,
                 )
-            print(f"[News] Embedded {len(inserted)} articles for '{topic}' ({member_id})")
+            print(f"[News] Embedded {len(inserted)} articles for '{topic}'")
         except Exception as e:
             print(f"[News] Embedding failed for '{topic}': {e}")
 
 
-def refresh_all_members(db_path: str = DB_PATH):
+def refresh_news(db_path: str = DB_PATH):
     """Midnight job — refresh news."""
     print("[News] Starting midnight refresh...")
-    fetch_and_cache_for_member(DEFAULT_MEMBER_ID, db_path)
+    fetch_and_cache(db_path)
     print("[News] Midnight refresh complete.")
 
 
@@ -221,61 +212,40 @@ def refresh_all_members(db_path: str = DB_PATH):
 # Retrieval
 # ---------------------------------------------------------------------------
 
-def get_news_for_member(member_id: str, db_path: str = DB_PATH) -> List[NewsItem]:
-    """Return today's cached news for a member. Instant — no network call."""
+def get_news(db_path: str = DB_PATH, top_k: int = 7) -> List[NewsItem]:
+    """Return today's cached news. Instant — no network call."""
     today = date.today().isoformat()
     with sqlite3.connect(db_path) as conn:
         rows = conn.execute(
-            """SELECT id, member_id, topic, headline, summary, url, fetched_date
+            """SELECT id, topic, headline, summary, url, fetched_date
                FROM news_cache
-               WHERE member_id=? AND fetched_date=?
+               WHERE fetched_date=?
                ORDER BY topic, id""",
-            (member_id, today),
+            (today,),
         ).fetchall()
-    return [NewsItem(*r) for r in rows]
+    return [NewsItem(*r) for r in rows][:top_k]
 
 
 def search_news_semantic(
     query: str,
-    member_id: str,
     top_k: int = 5,
     db_path: str = DB_PATH,
 ) -> List[NewsItem]:
-    """
-    Semantic search over today's cached news for a member.
-    Returns the most relevant NewsItems for the given query.
-    """
+    """Semantic search over today's cached news."""
     from agent.vector_store import search_similar
 
-    today = date.today().isoformat()
-    results = search_similar(
-        query=query,
-        source_type="news",
-        member_id=member_id,
-        top_k=top_k,
-    )
-
+    results = search_similar(query=query, source_type="news", top_k=top_k)
     if not results:
         return []
 
-    # Re-hydrate full NewsItem from the DB using matched content
-    all_news = get_news_for_member(member_id, db_path)
-    news_by_content = {}
-    for item in all_news:
-        combined = f"{item.headline}. {item.summary}"
-        news_by_content[combined] = item
+    all_news = get_news(db_path)
+    news_by_content = {f"{item.headline}. {item.summary}": item for item in all_news}
 
     matched = []
     for _source_id, _source_type, content, _distance in results:
         if content in news_by_content:
             matched.append(news_by_content[content])
-
     return matched
-
-
-def get_personalized_news(member_id: str = DEFAULT_MEMBER_ID, top_k: int = 7, db_path: str = DB_PATH) -> List[NewsItem]:
-    """Return up to top_k news items for today."""
-    return get_news_for_member(member_id, db_path)[:top_k]
 
 
 def format_news_for_llm(news_items: List[NewsItem]) -> str:
@@ -296,11 +266,11 @@ def format_news_for_llm(news_items: List[NewsItem]) -> str:
     return "\n".join(lines)
 
 
-def is_news_cached_today(member_id: str, db_path: str = DB_PATH) -> bool:
+def is_news_cached_today(db_path: str = DB_PATH) -> bool:
     today = date.today().isoformat()
     with sqlite3.connect(db_path) as conn:
         count = conn.execute(
-            "SELECT COUNT(*) FROM news_cache WHERE member_id=? AND fetched_date=?",
-            (member_id, today),
+            "SELECT COUNT(*) FROM news_cache WHERE fetched_date=?",
+            (today,),
         ).fetchone()[0]
     return count > 0

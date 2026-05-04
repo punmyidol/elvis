@@ -1,22 +1,22 @@
 """
 elvis/memory.py
 
-Two-scoped memory system:
-  - Shared: family-wide facts (address, pet names, house rules)
-  - Personal: per-member facts (preferences, allergies, schedules)
-
-Extraction pipeline:
-  Stage 1 — regex fast-path (deterministic, always catches names etc.)
-  Stage 2 — LLM extraction for subtler facts
+Single-table memory with sqlite-vec vector store.
+Only the `remember` tool writes here — no passive extraction.
 """
 
-import sqlite3
 import json
-import re
+import sqlite3
+import struct
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
-from langchain_ollama import ChatOllama
-from core.config import DB_PATH, OLLAMA_MODEL, OLLAMA_BASE_URL, MAX_MEMORIES_PER_MEMBER, MAX_FACT_WORDS, MAX_RELEVANT_MEMORIES
+from typing import List
+
+import ollama
+import sqlite_vec
+
+from core.config import DB_PATH, OLLAMA_BASE_URL, EMBED_MODEL, MAX_MEMORIES, MAX_FACT_WORDS
+
+VECTOR_DIM = 768
 
 
 @dataclass
@@ -26,274 +26,131 @@ class Memory:
     importance: int
     keywords: List[str]
     created_at: str
-    scope: str      # "personal" | "shared"
-    member_id: Optional[str] = None
 
 
-# ---------------------------------------------------------------------------
-# Singleton categories — one entry per member max (update instead of insert)
-# ---------------------------------------------------------------------------
+def _embed(text: str) -> List[float]:
+    client = ollama.Client(host=OLLAMA_BASE_URL)
+    return client.embed(model=EMBED_MODEL, input=text).embeddings[0]
 
-_SINGLETON_CATEGORIES = {
-    "name": "name", "age": "age", "job": "job",
-    "occupation": "job", "location": "location",
-}
 
-# ---------------------------------------------------------------------------
-# Fast-path regex patterns
-# ---------------------------------------------------------------------------
+def _pack(vector: List[float]) -> bytes:
+    return struct.pack(f"{len(vector)}f", *vector)
 
-_FAST_PATH_PATTERNS = [
-    (
-        r"(?:my name is|i(?:'m| am| go by)|call me|you can call me)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)",
-        lambda m: f"User's name is {m}", 5,
-        lambda m: ["name", m.lower()],
-    ),
-    (
-        r"i(?:'m| am) (\d+)(?: years old)?",
-        lambda m: f"User is {m} years old", 4,
-        lambda m: ["age", m],
-    ),
-    (
-        r"i(?:'m| am) (?:a |an )?([a-z]+(?: [a-z]+)?(?:er|or|ist|ian|ent))\b",
-        lambda m: f"User works as a {m}", 4,
-        lambda m: ["job", "occupation", m],
-    ),
-    (
-        r"i (?:really )?(?:love|like|enjoy|prefer)\s+([a-z][\w\s]{2,20}?)(?:\.|,|$)",
-        lambda m: f"User likes {m.strip()}", 3,
-        lambda m: ["preference", "likes", m.strip().split()[0]],
-    ),
-    (
-        r"i (?:hate|dislike|don't like|do not like)\s+([a-z][\w\s]{2,20}?)(?:\.|,|$)",
-        lambda m: f"User dislikes {m.strip()}", 3,
-        lambda m: ["preference", "dislikes", m.strip().split()[0]],
-    ),
-    (
-        r"i(?:'m| am) (?:from|based in|living in|located in)\s+([A-Z][a-zA-Z\s,]{2,20}?)(?:\.|,|$)",
-        lambda m: f"User is from {m.strip()}", 3,
-        lambda m: ["location", m.strip().lower().split()[0]],
-    ),
-    (
-        r"(?:we |our family |the family )?(?:lives?|live) (?:at|in|on)\s+(.{5,40}?)(?:\.|,|$)",
-        lambda m: f"Family lives at {m.strip()}", 5,
-        lambda m: ["address", "home", "location"],
-    ),
-    (
-        r"(?:our |the )?(?:dog|cat|pet)(?:'s name)? is\s+([A-Z][a-z]+)",
-        lambda m: f"Family pet's name is {m}", 4,
-        lambda m: ["pet", m.lower()],
-    ),
-]
+
+def init_memory_tables(db_path: str = DB_PATH):
+    with sqlite3.connect(db_path) as conn:
+        conn.enable_load_extension(True)
+        sqlite_vec.load(conn)
+        conn.enable_load_extension(False)
+        conn.executescript(f"""
+            CREATE TABLE IF NOT EXISTS memory (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                content    TEXT NOT NULL,
+                importance INTEGER DEFAULT 3,
+                keywords   TEXT DEFAULT '[]',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE VIRTUAL TABLE IF NOT EXISTS memory_vec_items USING vec0(
+                embedding float[{VECTOR_DIM}]
+            );
+        """)
+        conn.commit()
 
 
 class MemoryManager:
     def __init__(self, db_path: str = DB_PATH):
         self.db_path = db_path
-        self._llm = ChatOllama(
-            model=OLLAMA_MODEL,
-            base_url=OLLAMA_BASE_URL,
-            temperature=0,
-        )
 
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
-
-    def _truncate(self, content: str) -> str:
-        words = content.split()
-        return " ".join(words[:MAX_FACT_WORDS]) if len(words) > MAX_FACT_WORDS else content
-
-    def _extract_json_array(self, raw: str) -> str:
-        raw = re.sub(r"```(?:json)?", "", raw).strip()
-        start, end = raw.find("["), raw.rfind("]")
-        if start == -1 or end == -1 or end < start:
-            return "[]"
-        return raw[start:end + 1]
-
-    # ------------------------------------------------------------------
-    # Read
-    # ------------------------------------------------------------------
-
-    def get_shared_memories(self) -> List[Memory]:
+    def get_memories(self) -> List[Memory]:
         with sqlite3.connect(self.db_path) as conn:
             rows = conn.execute(
-                "SELECT id, content, importance, keywords, created_at FROM shared_memories "
-                "ORDER BY importance DESC"
+                "SELECT id, content, importance, keywords, created_at FROM memory ORDER BY importance DESC"
             ).fetchall()
-        return [Memory(r[0], r[1], r[2], json.loads(r[3]), r[4], "shared") for r in rows]
+        return [Memory(r[0], r[1], r[2], json.loads(r[3]), r[4]) for r in rows]
 
-    def get_member_memories(self, member_id: str) -> List[Memory]:
+    def search_memories(self, query: str, top_k: int = 5) -> List[Memory]:
+        try:
+            packed = _pack(_embed(query))
+        except Exception as e:
+            print(f"[Memory] Embed failed: {e}")
+            return []
+
         with sqlite3.connect(self.db_path) as conn:
-            rows = conn.execute(
-                "SELECT id, content, importance, keywords, created_at FROM member_memories "
-                "WHERE member_id=? ORDER BY importance DESC",
-                (member_id,),
-            ).fetchall()
-        return [Memory(r[0], r[1], r[2], json.loads(r[3]), r[4], "personal", member_id) for r in rows]
+            conn.enable_load_extension(True)
+            sqlite_vec.load(conn)
+            conn.enable_load_extension(False)
+            rows = conn.execute("""
+                SELECT m.id, m.content, m.importance, m.keywords, m.created_at
+                FROM memory_vec_items v
+                JOIN memory m ON v.rowid = m.id
+                WHERE v.embedding MATCH ?
+                  AND k = ?
+                ORDER BY v.distance
+            """, (packed, top_k)).fetchall()
 
-    def get_relevant_memories(self, member_id: str, query: str) -> Tuple[List[Memory], List[Memory]]:
-        """Return (relevant_shared, relevant_personal) scored by keyword overlap."""
-        query_words = set(re.findall(r"\w+", query.lower()))
+        return [Memory(r[0], r[1], r[2], json.loads(r[3]), r[4]) for r in rows]
 
-        def score(m: Memory) -> float:
-            kw = set(k.lower() for k in m.keywords)
-            words = set(re.findall(r"\w+", m.content.lower()))
-            return len(query_words & (kw | words)) * m.importance
-
-        shared = sorted(self.get_shared_memories(), key=score, reverse=True)[:MAX_RELEVANT_MEMORIES]
-        personal = sorted(self.get_member_memories(member_id), key=score, reverse=True)[:MAX_RELEVANT_MEMORIES]
-        return shared, personal
-
-    # ------------------------------------------------------------------
-    # Write — shared
-    # ------------------------------------------------------------------
-
-    def _shared_duplicate_exists(self, content: str) -> bool:
+    def _duplicate_exists(self, content: str) -> bool:
         c = content.lower()
-        return any(c in m.content.lower() or m.content.lower() in c for m in self.get_shared_memories())
+        return any(c in m.content.lower() or m.content.lower() in c for m in self.get_memories())
 
-    def save_shared_memory(self, content: str, importance: int, keywords: List[str]):
-        content = self._truncate(content)
-        if self._shared_duplicate_exists(content):
-            print(f"[Memory/shared] Skipped duplicate: {content!r}")
+    def _evict_if_needed(self):
+        memories = self.get_memories()
+        if len(memories) <= MAX_MEMORIES:
             return
+        to_evict = memories[MAX_MEMORIES:]
         with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
-                "INSERT INTO shared_memories (content, importance, keywords) VALUES (?, ?, ?)",
+            conn.enable_load_extension(True)
+            sqlite_vec.load(conn)
+            conn.enable_load_extension(False)
+            for m in to_evict:
+                conn.execute("DELETE FROM memory_vec_items WHERE rowid=?", (m.id,))
+                conn.execute("DELETE FROM memory WHERE id=?", (m.id,))
+            conn.commit()
+        print(f"[Memory] Evicted {len(to_evict)} memories")
+
+    def save_memory(self, content: str, importance: int = 3, keywords: List[str] = None):
+        words = content.split()
+        content = " ".join(words[:MAX_FACT_WORDS]) if len(words) > MAX_FACT_WORDS else content
+        keywords = keywords or []
+
+        if self._duplicate_exists(content):
+            print(f"[Memory] Skipped duplicate: {content!r}")
+            return
+
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                "INSERT INTO memory (content, importance, keywords) VALUES (?, ?, ?)",
                 (content, importance, json.dumps(keywords)),
             )
+            mem_id = cursor.lastrowid
             conn.commit()
-        print(f"[Memory/shared] Saved: {content!r}")
-
-    # ------------------------------------------------------------------
-    # Write — personal
-    # ------------------------------------------------------------------
-
-    def _find_singleton_conflict(self, member_id: str, keywords: List[str]) -> Optional[Memory]:
-        for kw in keywords:
-            cat = _SINGLETON_CATEGORIES.get(kw.lower())
-            if not cat:
-                continue
-            for m in self.get_member_memories(member_id):
-                if any(_SINGLETON_CATEGORIES.get(k.lower()) == cat for k in m.keywords):
-                    return m
-        return None
-
-    def _member_duplicate_exists(self, member_id: str, content: str) -> bool:
-        c = content.lower()
-        return any(c in m.content.lower() or m.content.lower() in c for m in self.get_member_memories(member_id))
-
-    def _evict_if_needed(self, member_id: str):
-        memories = self.get_member_memories(member_id)
-        if len(memories) <= MAX_MEMORIES_PER_MEMBER:
-            return
-        to_evict = memories[MAX_MEMORIES_PER_MEMBER:]
-        with sqlite3.connect(self.db_path) as conn:
-            for m in to_evict:
-                conn.execute("DELETE FROM member_memories WHERE id=?", (m.id,))
-            conn.commit()
-        print(f"[Memory] Evicted {len(to_evict)} memories for {member_id}")
-
-    def save_member_memory(self, member_id: str, content: str, importance: int, keywords: List[str]):
-        content = self._truncate(content)
-
-        conflict = self._find_singleton_conflict(member_id, keywords)
-        if conflict:
-            print(f"[Memory] Updating: {conflict.content!r} → {content!r}")
-            with sqlite3.connect(self.db_path) as conn:
-                conn.execute(
-                    "UPDATE member_memories SET content=?, importance=?, keywords=? WHERE id=?",
-                    (content, importance, json.dumps(keywords), conflict.id),
-                )
-                conn.commit()
-            return
-
-        if self._member_duplicate_exists(member_id, content):
-            print(f"[Memory/personal] Skipped duplicate: {content!r}")
-            return
-
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
-                "INSERT INTO member_memories (member_id, content, importance, keywords) VALUES (?, ?, ?, ?)",
-                (member_id, content, importance, json.dumps(keywords)),
-            )
-            conn.commit()
-        self._evict_if_needed(member_id)
-        print(f"[Memory/personal] Saved for {member_id}: {content!r}")
-
-    def delete_memory(self, memory_id: int, scope: str):
-        table = "shared_memories" if scope == "shared" else "member_memories"
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute(f"DELETE FROM {table} WHERE id=?", (memory_id,))
-            conn.commit()
-
-    # ------------------------------------------------------------------
-    # Extraction pipeline
-    # ------------------------------------------------------------------
-
-    def _fast_path_extract(self, member_id: str, text: str) -> List[str]:
-        """Deterministic regex extraction. Returns list of saved content strings."""
-        saved = []
-        is_shared_pattern = lambda kws: "address" in kws or "pet" in kws
-
-        for pattern, content_fn, importance, keywords_fn in _FAST_PATH_PATTERNS:
-            match = re.search(pattern, text, re.IGNORECASE)
-            if match:
-                value = match.group(1).strip()
-                content = content_fn(value)
-                keywords = keywords_fn(value)
-                if is_shared_pattern(keywords):
-                    self.save_shared_memory(content, importance, keywords)
-                else:
-                    self.save_member_memory(member_id, content, importance, keywords)
-                saved.append(content)
-        return saved
-
-    def extract_and_save_memories(self, member_id: str, human_message: str, ai_response: str):
-        """Two-stage extraction: regex fast-path then LLM for subtler facts."""
-        fast_saved = self._fast_path_extract(member_id, human_message)
-
-        prompt = f"""Extract personal facts about the user from what they said.
-Be liberal — save anything personally meaningful.
-
-User said: "{human_message}"
-
-Rules:
-- Each fact must be {MAX_FACT_WORDS} words or fewer
-- Use third person: "User likes X", "User is from Y"
-- If the fact is about the whole family (address, pets, shared rules), prefix with "Family:"
-- Skip facts already captured: {json.dumps(fast_saved)}
-- Skip greetings, filler, or anything not personally meaningful
-
-Reply ONLY with a raw JSON array. No explanation. No markdown.
-Format: [{{"content": "...", "importance": 1-5, "keywords": ["...", "..."], "scope": "personal|shared"}}]
-If nothing new: []
-
-JSON array:"""
 
         try:
-            response = self._llm.invoke(prompt)
-            raw = response.content.strip()
-            print(f"[Memory] LLM raw: {raw!r}")
-            facts = json.loads(self._extract_json_array(raw))
-
-            for fact in facts:
-                content = fact.get("content", "").strip()
-                importance = int(fact.get("importance", 3))
-                keywords = fact.get("keywords", [])
-                scope = fact.get("scope", "personal")
-                if not content:
-                    continue
-                if scope == "shared":
-                    self.save_shared_memory(content, importance, keywords)
-                else:
-                    self.save_member_memory(member_id, content, importance, keywords)
-
-        except json.JSONDecodeError as e:
-            print(f"[Memory] JSON parse error: {e}")
+            packed = _pack(_embed(content))
+            with sqlite3.connect(self.db_path) as conn:
+                conn.enable_load_extension(True)
+                sqlite_vec.load(conn)
+                conn.enable_load_extension(False)
+                conn.execute(
+                    "INSERT INTO memory_vec_items(rowid, embedding) VALUES (?, ?)",
+                    (mem_id, packed),
+                )
+                conn.commit()
         except Exception as e:
-            print(f"[Memory] LLM extraction failed: {type(e).__name__}: {e}")
+            print(f"[Memory] Vector embed failed: {e}")
+
+        self._evict_if_needed()
+        print(f"[Memory] Saved: {content!r}")
+
+    def delete_memory(self, memory_id: int):
+        with sqlite3.connect(self.db_path) as conn:
+            conn.enable_load_extension(True)
+            sqlite_vec.load(conn)
+            conn.enable_load_extension(False)
+            conn.execute("DELETE FROM memory_vec_items WHERE rowid=?", (memory_id,))
+            conn.execute("DELETE FROM memory WHERE id=?", (memory_id,))
+            conn.commit()
 
 
 def create_memory_manager() -> MemoryManager:

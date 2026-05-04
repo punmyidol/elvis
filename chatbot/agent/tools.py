@@ -14,17 +14,6 @@ from langchain_core.tools import tool
 from ddgs import DDGS
 
 # ---------------------------------------------------------------------------
-# Current member context — set by chatbot.py before each invocation
-# ---------------------------------------------------------------------------
-
-_current_member_id = "parent_1"
-
-def set_current_member(member_id: str):
-    global _current_member_id
-    _current_member_id = member_id
-
-
-# ---------------------------------------------------------------------------
 # Time
 # ---------------------------------------------------------------------------
 
@@ -129,17 +118,14 @@ def fetch_url(url: str) -> str:
 # ---------------------------------------------------------------------------
 
 @tool
-def get_news(member_id: str = "") -> str:
+def get_news() -> str:
     """
     Get today's news from the pre-cached news store.
     Results are grouped by topic. News is refreshed automatically at midnight.
     Use this whenever someone asks about news, headlines, or what's happening today.
-    Do NOT pass a member_id — it is resolved automatically.
     """
-    from services.news import get_personalized_news, format_news_for_llm
-    resolved_id = member_id.strip() if member_id.strip() else _current_member_id
-    items = get_personalized_news(resolved_id)
-    return format_news_for_llm(items)
+    from services.news import get_news as _get_news, format_news_for_llm
+    return format_news_for_llm(_get_news())
 
 
 # ---------------------------------------------------------------------------
@@ -147,18 +133,16 @@ def get_news(member_id: str = "") -> str:
 # ---------------------------------------------------------------------------
 
 @tool
-def get_calendar(query: str, member_id: str = "", days_ahead: int = 7) -> str:
+def get_calendar(query: str, days_ahead: int = 7) -> str:
     """
     Get upcoming calendar events from the local iCloud calendar cache.
     Use this for questions about schedules, upcoming events, or appointments.
     days_ahead controls how far to look forward (default 7 days).
-    Do NOT pass a member_id — it is resolved automatically.
     """
     from services.elvis_calendar import get_events_for_range, format_events_for_llm
-    resolved_id = member_id.strip() if member_id.strip() else _current_member_id
     start = datetime.now()
     end = start + timedelta(days=days_ahead)
-    events = get_events_for_range(start, end, resolved_id or None)
+    events = get_events_for_range(start, end)
     return format_events_for_llm(events)
 
 
@@ -250,19 +234,15 @@ def update_calendar_event(
 # ---------------------------------------------------------------------------
 
 @tool
-def remember(fact: str, scope: str = "personal") -> str:
+def remember(fact: str) -> str:
     """
     Explicitly save an important fact to memory.
-    scope: 'personal' (about this user) or 'shared' (general knowledge).
     Use this when the user explicitly asks Elvis to remember something.
     """
     from agent.memory import create_memory_manager
     mm = create_memory_manager()
     keywords = [w.lower() for w in fact.split() if len(w) > 3][:4]
-    if scope == "shared":
-        mm.save_shared_memory(fact, importance=4, keywords=keywords)
-    else:
-        mm.save_member_memory(_current_member_id, fact, importance=4, keywords=keywords)
+    mm.save_memory(fact, importance=4, keywords=keywords)
     return f"Got it — I'll remember: {fact}"
 
 
