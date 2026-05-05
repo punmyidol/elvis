@@ -19,6 +19,10 @@ from services.news import is_news_cached_today as _is_news_cached_today
 from agent.chatbot import ask_chatbot, get_workflow
 from core.config import CHATBOT_INTRO, CHATBOT_NAME, DB_PATH
 
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", category=UserWarning)
+
 LOADING_MESSAGES = [
     "Thinking...",
     "Checking my notes...",

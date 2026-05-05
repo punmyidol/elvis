@@ -318,16 +318,43 @@ def test_e2e_llm():
 # Runner
 # ---------------------------------------------------------------------------
 
+def test_cadquery_docs_rag():
+    """cadquery_docs collection is populated and returns relevant results."""
+    import sqlite3
+    from agent.vector_store import search_similar
+
+    with sqlite3.connect(_DB_PATH) as conn:
+        count = conn.execute("SELECT COUNT(*) FROM cadquery_docs_metadata").fetchone()[0]
+    assert count >= 100, f"cadquery_docs has only {count} items (expected ≥100); re-run embed_cadquery_docs.py"
+
+    cases = [
+        ("fillet edges",          "fillet"),
+        ("drill a hole",          "hole"),
+        ("export to STEP file",   "Export"),
+        ("select bottom face",    "face"),
+    ]
+    for query, expected_keyword in cases:
+        results = search_similar(query, "cadquery_docs", top_k=3, db_path=_DB_PATH)
+        assert results, f"No results for query: {query!r}"
+        combined = " ".join(content for _, _, content, _ in results).lower()
+        assert expected_keyword.lower() in combined, (
+            f"Query {query!r} did not surface '{expected_keyword}' in top-3 results"
+        )
+
+    print(f"PASS  cad: cadquery_docs RAG ({count} items, retrieval quality verified)")
+
+
 CHECKS = [
-    ("imports",         test_imports),
-    ("config",          test_config),
-    ("db_schema",       test_db_schema),
-    ("output_dirs",     test_output_dirs),
-    ("script_exec",     test_script_exec),
-    ("step_validation", test_step_validation),
-    ("db_logging",      test_db_logging),
-    ("stream_events",   test_stream_events),
-    ("e2e_llm",         test_e2e_llm),
+    ("imports",              test_imports),
+    ("config",               test_config),
+    ("db_schema",            test_db_schema),
+    ("output_dirs",          test_output_dirs),
+    ("script_exec",          test_script_exec),
+    ("step_validation",      test_step_validation),
+    ("db_logging",           test_db_logging),
+    ("stream_events",        test_stream_events),
+    ("cadquery_docs_rag",    test_cadquery_docs_rag),
+    ("e2e_llm",              test_e2e_llm),
 ]
 
 if __name__ == "__main__":

@@ -29,6 +29,11 @@ from memory.elvis_memory import recall, remember as mem_remember
 from voice.stt import listen_once, warmup
 from voice.tts import speak, stop, is_speaking, feed, flush, drain
 
+# Re-apply after all imports — some library (chromadb/numpy dep) replaces warnings.filters at import time
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", category=UserWarning)
+
 
 def _wait_for_tts():
     while is_speaking():
@@ -140,6 +145,9 @@ def chat(voice: bool = False, one_shot: str = ""):
     _ready_calendar = _th.Event()
 
     from services.obsidian import VaultIndexer
+    from services.elvis_calendar import sync_calendar
+    warnings.filterwarnings("ignore", category=DeprecationWarning)
+    warnings.filterwarnings("ignore", category=UserWarning)
     _indexer = VaultIndexer(db_path=DB_PATH)
 
     def _run_indexer():
@@ -149,8 +157,6 @@ def chat(voice: bool = False, one_shot: str = ""):
     _th.Thread(target=_run_indexer, daemon=True).start()
     _obs = _indexer.start_watcher()
     _obs.start()
-
-    from services.elvis_calendar import sync_calendar
 
     def _run_calendar():
         sync_calendar()

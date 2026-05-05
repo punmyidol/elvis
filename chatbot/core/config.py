@@ -76,7 +76,7 @@ VECTOR_DISTANCE_THRESHOLD = 1.5
 # ---------------------------------------------------------------------------
 # CAD agent
 # ---------------------------------------------------------------------------
-CAD_MODEL = os.getenv("ELVIS_CAD_MODEL", "qwen2.5-coder:7b")
+CAD_MODEL = os.getenv("ELVIS_CAD_MODEL", "qwen2.5-coder:14b")
 CAD_OUTPUT_DIR = os.getenv(
     "ELVIS_CAD_OUTPUT_DIR",
     os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "outputs", "cad"))

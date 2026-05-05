@@ -29,6 +29,10 @@ from memory.elvis_memory import recall, remember as mem_remember
 from voice.stt import listen_once
 from voice.tts import speak, stop, is_speaking, feed, flush, drain
 
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", category=UserWarning)
+
 
 def _wait_for_tts():
     """Wait for TTS to finish, then drain the mic's 2-second rolling buffer."""

@@ -2,7 +2,7 @@
 elvis/agent/cad_tool.py
 
 LangChain tool: generate_cad_model
-- Generates a CadQuery Python script via qwen2.5-coder:7b
+- Generates a CadQuery Python script via qwen2.5-coder:14b
 - Executes it in a subprocess (30s timeout)
 - Validates STEP output (non-zero volume)
 - Retries up to 3 times, feeding stderr back to LLM on failure
@@ -48,43 +48,31 @@ Rules:
   The string OUTPUT_PATH will be injected by the runner — write it literally as OUTPUT_PATH.
 - No markdown fences, no explanation — only the Python script.
 
-Example (20×20×10 mm box):
+Example :
 ```python
+# 20×20×10 mm box
 import cadquery as cq
 result = cq.Workplane("XY").box(20, 20, 10)
 result.val().exportStep(OUTPUT_PATH)
+
+# Hollow tapered cylinder (like a cup or pot)
+outer = cq.Workplane("XY").add(
+    cq.Solid.makeCone(40, 50, 100)   # base_r, top_r, height
+)
+result = outer.shell(-3)             # 3mm wall thickness
+
+
 ```
+
 """).strip()
 
 
-def _search_cadquery_docs(query: str, k: int = 3) -> str:
-    """Return relevant CadQuery doc chunks from elvis.db, or empty string if not populated."""
+def _search_cadquery_docs(query: str, k: int = 20, db_path: Optional[str] = None) -> str:
+    """Return relevant CadQuery doc chunks, or empty string if collection not yet populated."""
     try:
-        import sqlite_vec  # noqa: F401 — optional dependency
-        with sqlite3.connect(DB_PATH) as conn:
-            conn.enable_load_extension(True)
-            sqlite_vec.load(conn)
-            conn.enable_load_extension(False)
-
-            # Check table exists
-            row = conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name='cadquery_docs_items'"
-            ).fetchone()
-            if not row:
-                return ""
-
-            from agent.vector_store import embed_text
-            vec = embed_text(query)
-            rows = conn.execute(
-                """
-                SELECT m.content
-                FROM cadquery_docs_items i
-                JOIN cadquery_docs_metadata m ON m.id = i.rowid
-                ORDER BY vec_distance_cosine(i.embedding, ?) LIMIT ?
-                """,
-                (vec, k),
-            ).fetchall()
-            return "\n\n".join(r[0] for r in rows)
+        from agent.vector_store import search_similar
+        results = search_similar(query, "cadquery_docs", top_k=k, db_path=db_path or DB_PATH)
+        return "\n\n".join(content for _, _, content, _ in results)
     except Exception:
         return ""
 
@@ -230,7 +218,7 @@ def generate_cad_stream(
     basename = str(uuid.uuid4())
     output_path = os.path.join(CAD_OUTPUT_DIR, f"{basename}.step")
 
-    docs_context = _search_cadquery_docs(prompt)
+    docs_context = _search_cadquery_docs(prompt, db_path=db_path)
     if docs_context:
         yield {"status": "context", "message": "Retrieved CadQuery documentation context."}
 

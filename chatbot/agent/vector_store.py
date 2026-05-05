@@ -79,6 +79,15 @@ def init_vector_table(db_path: str = DB_PATH):
                 source_id TEXT NOT NULL,
                 content   TEXT NOT NULL
             );
+
+            CREATE VIRTUAL TABLE IF NOT EXISTS cadquery_docs_items USING vec0(
+                embedding float[{VECTOR_DIM}]
+            );
+            CREATE TABLE IF NOT EXISTS cadquery_docs_metadata (
+                rowid     INTEGER PRIMARY KEY,
+                source_id TEXT NOT NULL,
+                content   TEXT NOT NULL
+            );
         """)
         conn.commit()
     print(f"[VectorStore] Initialised doc + news vec tables (dim={VECTOR_DIM})")
@@ -104,6 +113,8 @@ def _tables(source_type: str) -> Tuple[str, str]:
         return "doc_vec_items", "doc_vec_metadata"
     if source_type == "news":
         return "news_vec_items", "news_vec_metadata"
+    if source_type == "cadquery_docs":
+        return "cadquery_docs_items", "cadquery_docs_metadata"
     raise ValueError(f"Unknown source_type: {source_type!r}")
 
 
