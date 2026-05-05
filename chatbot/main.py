@@ -13,7 +13,7 @@ import streamlit as st
 from langchain_core.messages import AIMessage, HumanMessage
 
 from core.db import init_db
-from agent.memory import create_memory_manager
+from memory.elvis_memory import recall_all, forget
 from services.elvis_calendar import sync_calendar, get_last_sync_time
 from services.news import is_news_cached_today as _is_news_cached_today
 from agent.chatbot import ask_chatbot, get_workflow
@@ -100,8 +100,7 @@ app_config = {
 # Sidebar
 # ---------------------------------------------------------------------------
 
-mm = create_memory_manager()
-memories = mm.get_memories()
+memories = recall_all()
 
 with st.sidebar:
     with st.form("thread_form"):
@@ -127,10 +126,10 @@ with st.sidebar:
         for m in memories:
             col1, col2 = st.columns([5, 1])
             with col1:
-                st.caption(f"{m.content} *(★{m.importance})*")
+                st.caption(m["memory"])
             with col2:
-                if st.button("🗑", key=f"mem_{m.id}"):
-                    mm.delete_memory(m.id)
+                if st.button("🗑", key=f"mem_{m['id']}"):
+                    forget(m["id"])
                     st.rerun()
     else:
         st.caption("No memories yet.")
@@ -145,7 +144,7 @@ if _os.path.exists(_greet_path):
     with open(_greet_path) as _f:
         _greeting = _f.read().strip()
 else:
-    _greeting = "How can I help?" if memories else "How can I help?"
+    _greeting = "How can I help?"
 welcome_message = AIMessage(content=f"{CHATBOT_INTRO}\n\n{_greeting}")
 
 # ---------------------------------------------------------------------------

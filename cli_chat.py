@@ -22,10 +22,10 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 
-from core.config import DB_PATH, OLLAMA_MODEL, OLLAMA_BASE_URL, MAX_CONTEXT_TOKENS, CHATBOT_NAME
+from core.config import DB_PATH, OLLAMA_MODEL, OLLAMA_BASE_URL, MAX_CONTEXT_TOKENS, CHATBOT_NAME, MAX_RELEVANT_MEMORIES
 from core.db import init_db
 from agent.tools import ELVIS_TOOLS
-from agent.memory import MemoryManager
+from memory.elvis_memory import recall, remember as mem_remember
 from voice.stt import listen_once, warmup
 from voice.tts import speak, stop, is_speaking, feed, flush, drain
 
@@ -67,7 +67,7 @@ Rules:
     if voice:
         base += "- Voice mode: avoid markdown, bullet points, and emojis. Speak in plain sentences.\n"
     if mems:
-        facts = "\n".join(f"  - {m.content}" for m in mems)
+        facts = "\n".join(f"  - {m['memory']}" for m in mems)
         base += f"\n## What I know:\n{facts}\n"
     return base
 
@@ -84,14 +84,12 @@ def make_workflow(voice: bool = False):
         reasoning=False,
     ).bind_tools(ELVIS_TOOLS)
 
-    mm = MemoryManager()
-
     def chatbot_node(state: MessagesState, config: RunnableConfig) -> dict:
         latest = next(
             (_extract_text(m.content) for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
             "",
         )
-        mems = mm.search_memories(latest)
+        mems = recall(latest, limit=MAX_RELEVANT_MEMORIES)
         system = build_system_prompt(mems, voice=voice)
         trimmed = trim_messages(
             state["messages"],
@@ -103,13 +101,34 @@ def make_workflow(voice: bool = False):
         response = llm.invoke([SystemMessage(content=system)] + trimmed)
         return {"messages": [response]}
 
+    def memory_write_node(state: MessagesState) -> dict:
+        from langchain_core.messages import AIMessage
+        messages = state.get("messages", [])
+        last_human = next((m for m in reversed(messages) if isinstance(m, HumanMessage)), None)
+        last_ai = next(
+            (m for m in reversed(messages) if isinstance(m, AIMessage) and _extract_text(m.content)),
+            None,
+        )
+        if last_human and last_ai:
+            pair = [
+                {"role": "user", "content": _extract_text(last_human.content)},
+                {"role": "assistant", "content": _extract_text(last_ai.content)},
+            ]
+            try:
+                mem_remember(pair)
+            except Exception as e:
+                print(f"[memory_write] Failed: {e}")
+        return {}
+
     tool_node = ToolNode(ELVIS_TOOLS)
     builder = StateGraph(MessagesState)
     builder.add_node("chatbot", chatbot_node)
     builder.add_node("tools", tool_node)
+    builder.add_node("memory_write", memory_write_node)
     builder.set_entry_point("chatbot")
-    builder.add_conditional_edges("chatbot", tools_condition)
+    builder.add_conditional_edges("chatbot", tools_condition, {"tools": "tools", END: "memory_write"})
     builder.add_edge("tools", "chatbot")
+    builder.add_edge("memory_write", END)
     return builder.compile(checkpointer=checkpointer)
 
 

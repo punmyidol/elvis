@@ -240,11 +240,28 @@ def remember(fact: str) -> str:
     Explicitly save an important fact to memory.
     Use this when the user explicitly asks Elvis to remember something.
     """
-    from agent.memory import create_memory_manager
-    mm = create_memory_manager()
-    keywords = [w.lower() for w in fact.split() if len(w) > 3][:4]
-    mm.save_memory(fact, importance=4, keywords=keywords)
+    from memory.elvis_memory import remember as mem_remember
+    mem_remember([{"role": "user", "content": f"Remember this: {fact}"}])
     return f"Got it — I'll remember: {fact}"
+
+
+@tool
+def show_memories() -> str:
+    """Show all memories Elvis currently holds about the user."""
+    from memory.elvis_memory import recall_all
+    memories = recall_all()
+    if not memories:
+        return "I don't have any stored memories yet."
+    lines = [f"{i + 1}. [{m['id']}] {m['memory']}" for i, m in enumerate(memories)]
+    return "Here's what I remember:\n" + "\n".join(lines)
+
+
+@tool
+def delete_memory(memory_id: str) -> str:
+    """Delete a specific memory by its ID. Ask the user to confirm before calling this."""
+    from memory.elvis_memory import forget
+    forget(memory_id)
+    return f"Memory {memory_id} deleted."
 
 
 # ---------------------------------------------------------------------------
@@ -377,7 +394,8 @@ def move_document(old_name: str, new_name: str) -> str:
 ELVIS_TOOLS = [
     get_current_time, web_search, fetch_url, get_news,
     get_calendar, list_calendars, create_calendar_event, delete_calendar_event, update_calendar_event,
-    remember, search_gmail, search_obsidian, read_obsidian_note, update_obsidian_note, search_documents,
+    remember, show_memories, delete_memory,
+    search_gmail, search_obsidian, read_obsidian_note, update_obsidian_note, search_documents,
     list_documents, read_document, write_document, delete_document, move_document,
     generate_cad_model,
 ]

@@ -1,8 +1,9 @@
 """
-elvis/memory.py
+elvis/memory.py — DEPRECATED
 
-Single-table memory with sqlite-vec vector store.
-Only the `remember` tool writes here — no passive extraction.
+Replaced by memory/elvis_memory.py (mem0 backend).
+Kept for reference and migration tooling only.
+Do not import MemoryManager for new code.
 """
 
 import json

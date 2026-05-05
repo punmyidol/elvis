@@ -11,7 +11,7 @@ LangGraph ReAct agent with:
 
 import sqlite3
 import base64
-from typing import List, Generator
+from typing import Generator
 
 import streamlit as st
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, trim_messages
@@ -21,9 +21,9 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 
-from core.config import DB_PATH, OLLAMA_MODEL, OLLAMA_BASE_URL, CHATBOT_NAME, MAX_CONTEXT_TOKENS
-from agent.memory import MemoryManager, Memory  # Memory used in type hints
+from core.config import DB_PATH, OLLAMA_MODEL, OLLAMA_BASE_URL, CHATBOT_NAME, MAX_CONTEXT_TOKENS, MAX_RELEVANT_MEMORIES
 from agent.tools import ELVIS_TOOLS
+from memory.elvis_memory import recall, remember as mem_remember
 
 
 # ---------------------------------------------------------------------------
@@ -63,14 +63,12 @@ def get_workflow():
     llm = get_llm()
 
     def chatbot_node(state: MessagesState, config: RunnableConfig) -> dict:
-        mm = MemoryManager()
-
         latest_human = next(
             (_extract_text(m.content) for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
             "",
         )
 
-        mems = mm.search_memories(latest_human)
+        mems = recall(latest_human, limit=MAX_RELEVANT_MEMORIES)
         system_prompt = _build_system_prompt(mems)
 
         trimmed = trim_messages(
@@ -84,14 +82,35 @@ def get_workflow():
         response = llm.invoke([SystemMessage(content=system_prompt)] + trimmed)
         return {"messages": [response]}
 
+    def memory_write_node(state: MessagesState) -> dict:
+        from langchain_core.messages import AIMessage
+        messages = state.get("messages", [])
+        last_human = next((m for m in reversed(messages) if isinstance(m, HumanMessage)), None)
+        last_ai = next(
+            (m for m in reversed(messages) if isinstance(m, AIMessage) and _extract_text(m.content)),
+            None,
+        )
+        if last_human and last_ai:
+            pair = [
+                {"role": "user", "content": _extract_text(last_human.content)},
+                {"role": "assistant", "content": _extract_text(last_ai.content)},
+            ]
+            try:
+                mem_remember(pair)
+            except Exception as e:
+                print(f"[memory_write] Failed: {e}")
+        return {}
+
     tool_node = ToolNode(ELVIS_TOOLS)
 
     builder = StateGraph(MessagesState)
     builder.add_node("chatbot", chatbot_node)
     builder.add_node("tools", tool_node)
+    builder.add_node("memory_write", memory_write_node)
     builder.set_entry_point("chatbot")
-    builder.add_conditional_edges("chatbot", tools_condition)
+    builder.add_conditional_edges("chatbot", tools_condition, {"tools": "tools", END: "memory_write"})
     builder.add_edge("tools", "chatbot")
+    builder.add_edge("memory_write", END)
 
     return builder.compile(checkpointer=checkpointer)
 
@@ -100,7 +119,7 @@ def get_workflow():
 # System prompt
 # ---------------------------------------------------------------------------
 
-def _build_system_prompt(mems: List[Memory] = None, voice: bool = False) -> str:
+def _build_system_prompt(mems: list = None, voice: bool = False) -> str:
     from datetime import datetime
     today = datetime.now().strftime("%A, %d %B %Y")
 
@@ -128,7 +147,7 @@ Rules:
 """
 
     if mems:
-        facts = "\n".join(f"  - {m.content}" for m in mems)
+        facts = "\n".join(f"  - {m['memory']}" for m in mems)
         base += f"\n## What I know:\n{facts}\n"
 
     if voice:
@@ -150,7 +169,7 @@ Rules:
 # ---------------------------------------------------------------------------
 
 def ask_chatbot(
-    messages: List[BaseMessage],
+    messages: list[BaseMessage],
     app_config: dict,
     image_bytes: bytes = None,
     image_mime: str = "image/jpeg",

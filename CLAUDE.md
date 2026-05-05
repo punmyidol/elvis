@@ -95,8 +95,16 @@ Standalone price comparison tool — scrapers for Lazada (`scrapers/lazada.py`),
 
 ---
 
-### Memory (`chatbot/agent/memory.py`)
-`MemoryManager` — two-stage extraction (regex → LLM) into `member_memories` and `shared_memories` tables in `elvis.db`. `create_memory_manager()` factory to avoid re-instantiation latency.
+### Memory (`chatbot/memory/`)
+mem0 backend with Ollama LLM + ChromaDB vector store. Runs ADD/UPDATE/DELETE/NOOP conflict resolution automatically — no more append-only stale facts.
+- **Config**: `chatbot/memory/mem0_config.py` — Ollama `qwen2.5:7b` for extraction, `nomic-embed-text` for embeddings, ChromaDB at `data/chroma_db/`
+- **Client**: `chatbot/memory/mem0_client.py` — singleton `get_mem0_client()` factory
+- **Public interface**: `chatbot/memory/elvis_memory.py` — `remember()`, `recall()`, `recall_all()`, `forget()`, `forget_all()`
+- **Memory write**: passive extraction via `memory_write_node` runs after every assistant response (last user+assistant pair → mem0)
+- **Memory read**: `recall(query, limit=5)` called in `chatbot_node` to inject relevant facts into system prompt
+- **Tools**: `remember` (explicit user request), `show_memories`, `delete_memory`
+- All memory access must go through `chatbot/memory/elvis_memory.py` — do not call mem0 client directly from nodes
+- Old `chatbot/agent/memory.py` is deprecated — do not use for new code
 
 ---
 

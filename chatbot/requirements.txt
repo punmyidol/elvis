@@ -18,3 +18,5 @@ cq-warehouse
 cq-gears
 cadqueryhelper
 cq-gridfinity
+mem0ai
+chromadb
