@@ -188,11 +188,8 @@ class _DebouncedHandler(FileSystemEventHandler):
             self._timers.pop(path, None)
         if action == "delete":
             self._indexer.delete_note(path)
-            print(f"[Watcher] Deleted: {path}")
         else:
-            result = self._indexer.index_note(path)
-            if result:
-                print(f"[Watcher] Indexed: {path}")
+            self._indexer.index_note(path)
 
     def on_modified(self, event):
         if not event.is_directory and event.src_path.endswith(".md"):

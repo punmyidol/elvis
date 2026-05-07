@@ -11,6 +11,7 @@ LangGraph ReAct agent with:
 
 import sqlite3
 import base64
+from concurrent.futures import ThreadPoolExecutor
 from typing import Generator
 
 import streamlit as st
@@ -24,6 +25,17 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from core.config import DB_PATH, OLLAMA_MODEL, OLLAMA_BASE_URL, CHATBOT_NAME, MAX_CONTEXT_TOKENS, MAX_RELEVANT_MEMORIES
 from agent.tools import ELVIS_TOOLS
 from memory.elvis_memory import recall, remember as mem_remember
+from agent.thinking_agent import start_session as _thinking_start, continue_session as _thinking_continue
+
+# thread_id → active thinking session_id
+_active_thinking_sessions: dict[str, str] = {}
+
+_THINKING_START_KEYWORDS = {
+    "think about", "plan out", "research", "figure out",
+    "think through", "analyse", "analyze", "investigate",
+}
+_THINKING_STOP_KEYWORDS = {"stop", "that's enough", "done thinking", "finish", "quit"}
+_THINKING_CONTINUE_KEYWORDS = {"keep going", "continue", "go on", "next", "proceed"}
 
 
 # ---------------------------------------------------------------------------
@@ -40,12 +52,13 @@ def _extract_text(content) -> str:
     return ""
 
 
+_mem_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mem_write")
+
 # ---------------------------------------------------------------------------
-# Module-level singletons — initialised once, reused every Streamlit rerun
+# Workflow factory — Streamlit-free helpers so server.py can use the same graph
 # ---------------------------------------------------------------------------
 
-@st.cache_resource
-def get_llm():
+def _create_llm():
     return ChatOllama(
         model=OLLAMA_MODEL,
         base_url=OLLAMA_BASE_URL,
@@ -55,18 +68,38 @@ def get_llm():
     ).bind_tools(ELVIS_TOOLS)
 
 
-@st.cache_resource
-def get_workflow():
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    checkpointer = SqliteSaver(conn)
-
-    llm = get_llm()
-
+def _compile_workflow(llm, checkpointer):
     def chatbot_node(state: MessagesState, config: RunnableConfig) -> dict:
+        from langchain_core.messages import AIMessage as _AIMessage
+
+        thread_id = config.get("configurable", {}).get("thread_id", "default")
         latest_human = next(
             (_extract_text(m.content) for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
             "",
         )
+        lower = latest_human.lower()
+
+        # --- Thinking agent routing ---
+        if thread_id in _active_thinking_sessions:
+            session_id = _active_thinking_sessions[thread_id]
+            from langchain_ollama import ChatOllama as _Ollama
+            thinking_llm = _Ollama(
+                model=OLLAMA_MODEL, base_url=OLLAMA_BASE_URL, temperature=0.5
+            )
+            checkpoint, is_done = _thinking_continue(session_id, latest_human, thinking_llm)
+            if is_done:
+                del _active_thinking_sessions[thread_id]
+            return {"messages": [_AIMessage(content=checkpoint)]}
+
+        if any(kw in lower for kw in _THINKING_START_KEYWORDS):
+            from langchain_ollama import ChatOllama as _Ollama
+            thinking_llm = _Ollama(
+                model=OLLAMA_MODEL, base_url=OLLAMA_BASE_URL, temperature=0.5
+            )
+            session_id, checkpoint = _thinking_start(latest_human, thinking_llm, thread_id)
+            _active_thinking_sessions[thread_id] = session_id
+            return {"messages": [_AIMessage(content=checkpoint)]}
+        # --- End thinking agent routing ---
 
         mems = recall(latest_human, limit=MAX_RELEVANT_MEMORIES)
         system_prompt = _build_system_prompt(mems)
@@ -95,10 +128,12 @@ def get_workflow():
                 {"role": "user", "content": _extract_text(last_human.content)},
                 {"role": "assistant", "content": _extract_text(last_ai.content)},
             ]
-            try:
-                mem_remember(pair)
-            except Exception as e:
-                print(f"[memory_write] Failed: {e}")
+            def _write(p=pair):
+                try:
+                    mem_remember(p)
+                except Exception as e:
+                    print(f"\n[memory_write] Failed: {e}")
+            _mem_executor.submit(_write)
         return {}
 
     tool_node = ToolNode(ELVIS_TOOLS)
@@ -115,6 +150,39 @@ def get_workflow():
     return builder.compile(checkpointer=checkpointer)
 
 
+# Streamlit-cached singletons (only called from Streamlit context)
+
+@st.cache_resource
+def get_llm():
+    return _create_llm()
+
+
+@st.cache_resource
+def get_workflow():
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    checkpointer = SqliteSaver(conn)
+    return _compile_workflow(get_llm(), checkpointer)
+
+
+# Server singleton — module-level, no @st.cache_resource
+
+import threading as _threading
+
+_server_workflow = None
+_server_wf_lock = _threading.Lock()
+
+
+def get_server_workflow():
+    """Thread-safe singleton for server.py (avoids @st.cache_resource)."""
+    global _server_workflow
+    with _server_wf_lock:
+        if _server_workflow is None:
+            conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+            checkpointer = SqliteSaver(conn)
+            _server_workflow = _compile_workflow(_create_llm(), checkpointer)
+    return _server_workflow
+
+
 # ---------------------------------------------------------------------------
 # System prompt
 # ---------------------------------------------------------------------------
@@ -126,24 +194,41 @@ def _build_system_prompt(mems: list = None, voice: bool = False) -> str:
     base = f"""You are {CHATBOT_NAME}, a helpful and friendly personal home assistant.
 Today's date is {today}.
 
+CRITICAL: You MUST respond in English only. Never output Thai, Chinese, Japanese, or any other language — not even a single word — regardless of the language of tool results, calendar entries, memory content, or any other input.
+
 Rules:
 - Only state facts you are certain about. If unsure, say so or use a tool.
 - NEVER invent personal details. Use ONLY the memory facts provided below.
-- Use get_current_time when asked what time or date it is — never guess.
-- Use get_news when asked about news or headlines — it reads from a pre-cached store.
-- Use get_calendar when asked about schedules, events, or appointments.
-- Use web_search for general questions or anything requiring current information. When search snippets don't contain enough detail (e.g. tech specs, full articles), follow up with fetch_url on the most relevant result's URL.
-- Use remember when the user explicitly asks you to remember something.
-- Use search_gmail for any email question including summaries — pass a broad query like "recent emails" if no specific topic is mentioned.
-- Use search_documents when the user asks about ANY personal file — CV, resume, transcript, photos, receipts, tax docs. Never guess the content; always call the tool first.
-- Use generate_cad_model when the user asks to create, design, or model a 3D part, shape, or object.
+- IMMEDIATELY call get_current_time when asked about the time or date — do NOT say you will check, just call the tool.
+- IMMEDIATELY call get_news when asked about news or headlines — do NOT say you will check, just call the tool.
+- IMMEDIATELY call get_calendar when asked about schedules, events, or appointments — do NOT say you will check, just call the tool.
+- IMMEDIATELY call web_search for anything requiring current information. When search snippets lack detail, follow up with fetch_url on the most relevant URL.
+- Call remember when the user explicitly asks you to remember something.
+- Call search_gmail for any email question — pass "recent emails" if no specific topic is given.
+- Call search_documents for ANY personal file (CV, resume, transcript, photos, receipts, tax docs) — never guess, always call the tool first.
+- Call generate_cad_model when the user asks to create, design, or model a 3D part, shape, or object.
 - Keep answers concise and natural.
+- Format ALL responses in Markdown: use **bold** for key terms, bullet lists for multi-item answers, `##` headers for multi-section responses, and code blocks for any code or file paths.
+- NEVER add placeholder text, parenthetical comments, or invented items (e.g. "(add tasks here)", "(missing)"). Only output what the tools actually returned.
+- NEVER output bare empty checkboxes (`[ ]` with no text after them) — skip them entirely.
+- NEVER end a response with an offer to help or a follow-up question unless the user specifically asked for suggestions.
+- For briefings and plans: use `##` for each section (Today's Tasks, Upcoming Events, Carried Over, etc.), bullet lists for items within each section, and a short `---` divider between sections. Omit any section that has no real content.
 
 ## File Organization:
-- Obsidian: personal notes, school notes, and to-do lists (tasks without specific dates).
-  - To-do list is at `todolist.md` in the vault root — use update_obsidian_note to add items.
+- Obsidian: personal notes, school notes, and to-do lists.
+  - Daily notes live at `dailies/YYYY-MM-DD.md` with sections "## 🎯 Top 3 Today",
+    "## 📝 Log", "## 🌙 End of Day" (containing **Carried over:**).
+  - Global to-do list at `todolist.md` (vault root) — undated tasks.
+  - Folders like `Uni Apps/` are old archives — never present them as today's work.
 - Documents folder: spreadsheets, CSVs, and anything that cannot be written in Markdown format.
 - Calendar: tasks and events that have specific start and end dates.
+
+## Routing for current work / planning queries:
+- "What should I be working on", "today's plan", "what's next", "my tasks today",
+  "what's on my plate" → IMMEDIATELY call get_today_plan. Never call search_obsidian
+  for these — it returns vector matches that include years-old archived notes.
+- "Find notes about <topic>" → search_obsidian.
+- "Open / read <specific note>" → read_obsidian_note.
 """
 
     if mems:
@@ -173,9 +258,11 @@ def ask_chatbot(
     app_config: dict,
     image_bytes: bytes = None,
     image_mime: str = "image/jpeg",
+    workflow=None,
 ) -> Generator[str, None, None]:
     """Stream the agent's response token by token."""
-    workflow = get_workflow()
+    if workflow is None:
+        workflow = get_workflow()
 
     # If image attached, replace last HumanMessage with multimodal version
     if image_bytes:

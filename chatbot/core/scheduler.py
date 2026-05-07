@@ -36,15 +36,15 @@ def _plan_my_day():
     """Generate a personalized daily briefing and write it to documents/greet.txt."""
     import os
     from datetime import datetime, timedelta
-    from services.obsidian import search_obsidian_logic
+    from services.obsidian import read_obsidian_note_logic
     from services.elvis_calendar import get_events_for_range, format_events_for_llm
     from langchain_ollama import ChatOllama
     from core.config import OLLAMA_MODEL, OLLAMA_BASE_URL, DOCUMENTS_DIR
 
     now = datetime.now()
-    todos = search_obsidian_logic("todolist")
+    todos = read_obsidian_note_logic("todolist.md")
     start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    end = start + timedelta(days=1)
+    end = start + timedelta(days=7)
     events = format_events_for_llm(get_events_for_range(start, end))
 
     if now.hour < 12:
@@ -54,12 +54,16 @@ def _plan_my_day():
     else:
         time_of_day = "evening"
 
+    today_str = now.strftime("%A, %d %B %Y")
     prompt = (
-        f"Today is {now.strftime('%A, %d %B %Y')}. Good {time_of_day}.\n\n"
-        f"Calendar today:\n{events or 'No events.'}\n\n"
-        f"Pending todos (from Obsidian):\n{todos or 'No todos found.'}\n\n"
-        "Write a short, friendly daily briefing (2-4 sentences). "
-        "Mention the time of day, summarise the schedule, and note any todos. Be concise."
+        f"CRITICAL: Today's exact date is {today_str}. Good {time_of_day}.\n"
+        f"Use ONLY the dates and event names listed below — do NOT recalculate, infer, or guess any dates.\n\n"
+        f"Upcoming calendar (next 7 days):\n{events or 'No events.'}\n\n"
+        f"Todo list (from Obsidian todolist.md):\n{todos or 'No todos found.'}\n\n"
+        f"Write a short, friendly daily briefing in 2-4 sentences. "
+        f"Today is {today_str}. Quote event dates exactly as shown above. "
+        "Only mention tasks and events that are clearly current or upcoming — ignore anything obviously outdated or completed. "
+        "Summarise what's on the calendar and what actionable todos remain. Be concise. Respond in English only."
     )
 
     llm = ChatOllama(model=OLLAMA_MODEL, base_url=OLLAMA_BASE_URL)

@@ -5,6 +5,7 @@ langchain-ollama
 langgraph
 langgraph-checkpoint-sqlite
 ddgs
+tavily-python
 feedparser
 pdfplumber
 caldav

@@ -12,6 +12,8 @@ import sqlite3
 import sys
 import os
 import time
+import threading as _threading
+from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "chatbot"))
 
@@ -28,6 +30,10 @@ from agent.tools import ELVIS_TOOLS
 from memory.elvis_memory import recall, remember as mem_remember
 from voice.stt import listen_once, warmup
 from voice.tts import speak, stop, is_speaking, feed, flush, drain
+
+_mem_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mem_write")
+_recall_prefetch: dict = {}
+_recall_lock = _threading.Lock()
 
 # Re-apply after all imports — some library (chromadb/numpy dep) replaces warnings.filters at import time
 import warnings
@@ -55,18 +61,19 @@ def build_system_prompt(mems=None, voice: bool = False) -> str:
 
     base = f"""You are {CHATBOT_NAME}, a helpful and friendly personal home assistant.
 Today's date is {today}.
-Always respond in English regardless of the language of tool results or memory content.
+
+CRITICAL: You MUST respond in English only. Never output Thai, Chinese, Japanese, or any other language — not even a single word — regardless of the language of tool results, calendar entries, memory content, or any other input.
 
 Rules:
 - Only state facts you are certain about. If unsure, say so or use a tool.
 - NEVER invent personal details. Use ONLY the memory facts provided below.
-- Use get_current_time when asked what time or date it is — never guess.
-- Use get_news when asked about news or headlines — it reads from a pre-cached store.
-- Use get_calendar when asked about schedules, events, or appointments.
-- Use web_search for general questions or anything requiring current information. When search snippets don't contain enough detail (e.g. tech specs, full articles), follow up with fetch_url on the most relevant result's URL.
-- Use remember when the user explicitly asks you to remember something.
-- Use search_gmail for any email question including summaries — pass a broad query like "recent emails" if no specific topic is mentioned.
-- Use search_documents when the user asks about ANY personal file — CV, resume, transcript, photos, receipts, tax docs. Never guess the content; always call the tool first.
+- IMMEDIATELY call get_current_time when asked about the time or date — do NOT say you will check, just call the tool.
+- IMMEDIATELY call get_news when asked about news or headlines — do NOT say you will check, just call the tool.
+- IMMEDIATELY call get_calendar when asked about schedules, events, or appointments — do NOT say you will check, just call the tool.
+- IMMEDIATELY call web_search for anything requiring current information. When search snippets lack detail, follow up with fetch_url on the most relevant URL.
+- Call remember when the user explicitly asks you to remember something.
+- Call search_gmail for any email question — pass "recent emails" if no specific topic is given.
+- Call search_documents for ANY personal file (CV, resume, transcript, receipts, tax docs) — never guess, always call the tool first.
 - Keep answers concise and natural.
 """
     if voice:
@@ -94,7 +101,10 @@ def make_workflow(voice: bool = False):
             (_extract_text(m.content) for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
             "",
         )
-        mems = recall(latest, limit=MAX_RELEVANT_MEMORIES)
+        with _recall_lock:
+            mems = _recall_prefetch.pop(latest, None)
+        if mems is None:
+            mems = recall(latest, limit=MAX_RELEVANT_MEMORIES)
         system = build_system_prompt(mems, voice=voice)
         trimmed = trim_messages(
             state["messages"],
@@ -119,10 +129,12 @@ def make_workflow(voice: bool = False):
                 {"role": "user", "content": _extract_text(last_human.content)},
                 {"role": "assistant", "content": _extract_text(last_ai.content)},
             ]
-            try:
-                mem_remember(pair)
-            except Exception as e:
-                print(f"[memory_write] Failed: {e}")
+            def _write(p=pair):
+                try:
+                    mem_remember(p)
+                except Exception as e:
+                    print(f"\n[memory_write] Failed: {e}")
+            _mem_executor.submit(_write)
         return {}
 
     tool_node = ToolNode(ELVIS_TOOLS)
@@ -139,6 +151,9 @@ def make_workflow(voice: bool = False):
 
 def chat(voice: bool = False, one_shot: str = ""):
     init_db(DB_PATH)
+
+    from memory.mem0_client import get_mem0_client
+    get_mem0_client()  # initialise singleton before any background threads touch it
 
     import threading as _th
     _ready_indexer = _th.Event()
@@ -230,6 +245,12 @@ def chat(voice: bool = False, one_shot: str = ""):
 
 
 def _run_turn(user_input: str, workflow, app_config, voice: bool):
+    def _prefetch_recall():
+        result = recall(user_input, limit=MAX_RELEVANT_MEMORIES)
+        with _recall_lock:
+            _recall_prefetch[user_input] = result
+    _threading.Thread(target=_prefetch_recall, daemon=True).start()
+
     messages = [HumanMessage(content=user_input)]
     print("Elvis: ", end="", flush=True)
 

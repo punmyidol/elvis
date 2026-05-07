@@ -66,3 +66,46 @@ def update_obsidian_note_logic(note_ref: str, body: str, tags: list = None) -> s
         return f"Updated note: {op.note_path}"
     except (FileNotFoundError, ValueError) as e:
         return str(e)
+
+
+def get_today_plan_logic() -> str:
+    """Read today's daily, yesterday's carried-over items, and todolist.md.
+    Pure file IO — no embeddings, no semantic match.
+    """
+    from datetime import date, timedelta
+    from pathlib import Path
+    import re
+
+    vault = Path(VAULT_ROOT)
+    if not vault.is_dir():
+        return f"Vault unavailable: {VAULT_ROOT}"
+
+    today = date.today()
+    yesterday = today - timedelta(days=1)
+    today_path = vault / "dailies" / f"{today.isoformat()}.md"
+    yest_path = vault / "dailies" / f"{yesterday.isoformat()}.md"
+    todo_path = vault / "todolist.md"
+
+    parts = [f"# Today's Plan — {today.strftime('%A, %d %B %Y')}\n"]
+
+    parts.append(f"## From dailies/{today.isoformat()}.md")
+    if today_path.exists():
+        parts.append(today_path.read_text(encoding="utf-8").strip())
+    else:
+        parts.append(f"_Today's daily note (dailies/{today.isoformat()}.md) does not exist yet._")
+
+    if yest_path.exists():
+        text = yest_path.read_text(encoding="utf-8")
+        m = re.search(r"\*\*Carried over:\*\*\s*\n(.+?)(?=\n\*\*|\Z)", text, re.DOTALL)
+        carried = m.group(1).strip() if m else ""
+        if carried:
+            parts.append(f"## Carried over from {yesterday.isoformat()}\n{carried}")
+
+    parts.append("## todolist.md")
+    if todo_path.exists():
+        body = todo_path.read_text(encoding="utf-8").strip()
+        parts.append(body if body else "_(empty)_")
+    else:
+        parts.append("_todolist.md does not exist._")
+
+    return "\n\n".join(parts)

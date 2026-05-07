@@ -3,14 +3,23 @@ import RunForm from './components/RunForm'
 import RunList from './components/RunList'
 import RunDetail from './components/RunDetail'
 import CadView from './components/CadView'
+import ThinkView from './components/ThinkView'
+import ChatView from './components/ChatView'
 import { fetchRuns } from './api'
 import type { RunSummary } from './types'
 
-type View = 'tasks' | 'cad'
+type View = 'tasks' | 'cad' | 'think' | 'chat'
 
 interface ActiveRun {
   runId: string
   autoStart: boolean
+}
+
+const NAV_LABELS: Record<View, string> = {
+  tasks: 'Tasks',
+  cad: 'CAD',
+  think: 'Think',
+  chat: 'Chat',
 }
 
 export default function App() {
@@ -33,29 +42,35 @@ export default function App() {
     setActive(null)
   }
 
+  const isChat = view === 'chat'
+
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100 font-mono">
       <header className="border-b border-gray-800 px-6 py-4 flex items-center justify-between">
         <h1 className="text-base font-semibold tracking-tight text-white">Elvis</h1>
         <nav className="flex gap-1">
-          {(['tasks', 'cad'] as View[]).map(v => (
+          {(['tasks', 'cad', 'think', 'chat'] as View[]).map(v => (
             <button
               key={v}
               onClick={() => handleViewChange(v)}
-              className={`px-3 py-1.5 text-xs rounded-md transition-colors capitalize ${
+              className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
                 view === v
                   ? 'bg-gray-800 text-white'
                   : 'text-gray-500 hover:text-gray-300'
               }`}
             >
-              {v === 'tasks' ? 'Tasks' : 'CAD'}
+              {NAV_LABELS[v]}
             </button>
           ))}
         </nav>
       </header>
 
-      <main className="max-w-3xl mx-auto px-6 py-8 space-y-10">
-        {view === 'cad' ? (
+      <main className={`${isChat ? 'max-w-5xl' : 'max-w-3xl'} mx-auto px-6 py-8 ${isChat ? '' : 'space-y-10'}`}>
+        {view === 'chat' ? (
+          <ChatView />
+        ) : view === 'think' ? (
+          <ThinkView />
+        ) : view === 'cad' ? (
           <CadView />
         ) : active ? (
           <RunDetail

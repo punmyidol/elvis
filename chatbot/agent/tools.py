@@ -14,6 +14,8 @@ from langchain_core.tools import tool
 from ddgs import DDGS
 from agent.cad_tool import generate_cad_model
 
+_TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY", "")
+
 # ---------------------------------------------------------------------------
 # Time
 # ---------------------------------------------------------------------------
@@ -31,7 +33,7 @@ def get_current_time() -> str:
 @tool
 def web_search(query: str) -> str:
     """
-    Search the web using DuckDuckGo for general questions, current events,
+    Search the web for general questions, current events,
     or anything requiring up-to-date information not in memory or news cache.
     """
     from core.config import DB_PATH
@@ -48,31 +50,53 @@ def web_search(query: str) -> str:
     except Exception:
         pass
 
+    output = None
     last_err = None
-    for attempt in range(2):
+
+    # --- Tavily (primary, if API key is configured) ---
+    if _TAVILY_API_KEY:
         try:
-            with DDGS() as ddgs:
-                results = list(ddgs.text(query, max_results=8))
-            if not results:
-                return "No results found."
-            output = "\n\n".join(
-                f"**{r['title']}**\n{r['body']}\nSource: {r['href']}"
-                for r in results
-            )
-            try:
-                with sqlite3.connect(DB_PATH) as conn:
-                    conn.execute(
-                        "INSERT OR REPLACE INTO web_search_cache(query, result, cached_at) VALUES (?, ?, ?)",
-                        (query, output, now),
-                    )
-            except Exception:
-                pass
-            return output
+            from tavily import TavilyClient
+            results = TavilyClient(api_key=_TAVILY_API_KEY).search(
+                query, max_results=8, search_depth="basic"
+            ).get("results", [])
+            if results:
+                output = "\n\n".join(
+                    f"**{r['title']}**\n{r['content']}\nSource: {r['url']}"
+                    for r in results
+                )
         except Exception as e:
             last_err = e
-            if attempt == 0:
-                time.sleep(1)
-    return f"Search failed: {last_err}"
+
+    # --- DuckDuckGo (fallback) ---
+    if output is None:
+        for attempt in range(2):
+            try:
+                with DDGS() as ddgs:
+                    results = list(ddgs.text(query, max_results=8))
+                if results:
+                    output = "\n\n".join(
+                        f"**{r['title']}**\n{r['body']}\nSource: {r['href']}"
+                        for r in results
+                    )
+                break
+            except Exception as e:
+                last_err = e
+                if attempt == 0:
+                    time.sleep(1)
+
+    if not output:
+        return f"Search failed: {last_err}" if last_err else "No results found."
+
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO web_search_cache(query, result, cached_at) VALUES (?, ?, ?)",
+                (query, output, now),
+            )
+    except Exception:
+        pass
+    return output
 
 
 # ---------------------------------------------------------------------------
@@ -286,13 +310,32 @@ def search_gmail(query: str) -> str:
 @tool
 def search_obsidian(query: str) -> str:
     """
-    Semantic search over the Obsidian notes vault using vector similarity.
-    Use for questions about personal notes, study notes, journal entries,
-    project notes, or anything stored in Obsidian.
-    Prefer this over regex search for natural language questions.
+    Semantic search the Obsidian vault for notes about a TOPIC (e.g. "machine learning notes",
+    "Python decorators", "trip to Japan"). Use only when the user asks to FIND notes ABOUT
+    something specific.
+
+    DO NOT use this for "what should I work on", "today's plan", "what's next", "my tasks",
+    or "what's on my plate" — those go to get_today_plan instead. This tool returns vector
+    matches across the WHOLE vault including archived years-old material, so it is wrong
+    for current-task queries.
     """
     from services.obsidian import search_obsidian_logic
     return search_obsidian_logic(query)
+
+
+@tool
+def get_today_plan() -> str:
+    """
+    Get the user's plan for today: today's daily note (dailies/YYYY-MM-DD.md),
+    yesterday's carried-over items, and the global todolist.md. No arguments.
+
+    IMMEDIATELY call this tool — do NOT call search_obsidian — whenever the user asks
+    any of: "what should I work on / be working on", "what's my plan today",
+    "what's on my plate", "what's next", "today's tasks", "what do I have to do today",
+    "my todos". Returns raw markdown; you summarise it for the user.
+    """
+    from services.obsidian import get_today_plan_logic
+    return get_today_plan_logic()
 
 
 @tool
@@ -395,7 +438,7 @@ ELVIS_TOOLS = [
     get_current_time, web_search, fetch_url, get_news,
     get_calendar, list_calendars, create_calendar_event, delete_calendar_event, update_calendar_event,
     remember, show_memories, delete_memory,
-    search_gmail, search_obsidian, read_obsidian_note, update_obsidian_note, search_documents,
+    search_gmail, search_obsidian, get_today_plan, read_obsidian_note, update_obsidian_note, search_documents,
     list_documents, read_document, write_document, delete_document, move_document,
     generate_cad_model,
 ]

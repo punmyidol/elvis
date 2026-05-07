@@ -23,7 +23,7 @@ from pydantic import BaseModel
 
 from agent.task_runner import RUNS_DIR, list_runs, resume_run, start_run
 from agent.cad_tool import generate_cad_stream
-from core.config import CAD_OUTPUT_DIR, CAD_SCRIPTS_DIR
+from core.config import CAD_OUTPUT_DIR, CAD_SCRIPTS_DIR, OLLAMA_MODEL, OLLAMA_BASE_URL
 
 # DB that the chatbot writes to (resolved relative to this file so it works
 # regardless of CWD when the server is started)
@@ -31,6 +31,24 @@ _CAD_DB = os.getenv(
     "ELVIS_DB_PATH",
     str(Path(__file__).parent.parent / "chatbot" / "elvis.db"),
 )
+
+# Ensure thinking tables exist on startup
+from services.thinking import init_thinking_tables as _init_thinking
+_init_thinking(_CAD_DB)
+
+# Chat thread registry
+def _init_chat_tables(db_path: str) -> None:
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS chat_threads (
+                thread_id  TEXT PRIMARY KEY,
+                title      TEXT NOT NULL DEFAULT 'New conversation',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+_init_chat_tables(_CAD_DB)
 
 app = FastAPI(title="Elvis Task Runner")
 
@@ -205,3 +223,396 @@ def cad_script(basename: str):
     if not path.exists():
         raise HTTPException(status_code=404, detail="script not found")
     return {"content": path.read_text()}
+
+
+# ---------------------------------------------------------------------------
+# Thinking agent endpoints
+# ---------------------------------------------------------------------------
+
+_THINK_DB = _CAD_DB  # same elvis.db
+
+_STAGING_ROOT = Path(__file__).resolve().parent.parent / "obsidian-module" / ".staging" / "thinking"
+
+
+class ThinkRequest(BaseModel):
+    prompt: str
+
+
+# GET /api/think/sessions must be declared BEFORE /api/think/{session_id}
+# or FastAPI will match "sessions" as a session_id.
+
+@app.get("/api/think/sessions")
+def think_sessions():
+    try:
+        with sqlite3.connect(_THINK_DB) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT session_id, prompt, status, iteration, created_at "
+                "FROM thinking_sessions ORDER BY created_at DESC LIMIT 50"
+            ).fetchall()
+    except sqlite3.OperationalError:
+        return []
+    return [dict(r) for r in rows]
+
+
+@app.get("/api/think/{session_id}/files")
+def think_list_files(session_id: str):
+    session_dir = _STAGING_ROOT / session_id
+    if not session_dir.exists():
+        return []
+    files = []
+    for f in sorted(session_dir.iterdir()):
+        if f.suffix == ".md" and f.is_file():
+            files.append({
+                "filename": f.name,
+                "size": f.stat().st_size,
+                "is_checkpoint": f.name.startswith("checkpoint_"),
+            })
+    files.sort(key=lambda x: (x["is_checkpoint"], x["filename"]))
+    return files
+
+
+@app.get("/api/think/{session_id}/files/{filename}")
+def think_get_file(session_id: str, filename: str):
+    if "/" in filename or "\\" in filename or ".." in filename:
+        raise HTTPException(status_code=400, detail="invalid filename")
+    f = _STAGING_ROOT / session_id / filename
+    if not f.exists() or not f.is_file():
+        raise HTTPException(status_code=404, detail="file not found")
+    return {"filename": filename, "content": f.read_text()}
+
+
+@app.get("/api/think/{session_id}")
+def think_session_detail(session_id: str):
+    try:
+        with sqlite3.connect(_THINK_DB) as conn:
+            conn.row_factory = sqlite3.Row
+            session = conn.execute(
+                "SELECT session_id, prompt, status, iteration, created_at "
+                "FROM thinking_sessions WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
+            if session is None:
+                raise HTTPException(status_code=404, detail="session not found")
+
+            tasks = conn.execute(
+                "SELECT id, description, type, status, iteration_created, depends_on "
+                "FROM thinking_tasks WHERE session_id = ? ORDER BY iteration_created, id",
+                (session_id,),
+            ).fetchall()
+
+            checkpoint = conn.execute(
+                "SELECT summary FROM thinking_checkpoints "
+                "WHERE session_id = ? ORDER BY iteration DESC LIMIT 1",
+                (session_id,),
+            ).fetchone()
+
+    except sqlite3.OperationalError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    import json as _json
+    return {
+        **dict(session),
+        "tasks": [
+            {**dict(t), "depends_on": _json.loads(t["depends_on"] or "[]")}
+            for t in tasks
+        ],
+        "latest_checkpoint": checkpoint["summary"] if checkpoint else None,
+    }
+
+
+class ThinkContinueRequest(BaseModel):
+    input: str
+
+
+def _make_thinking_llm():
+    from langchain_ollama import ChatOllama
+    return ChatOllama(model=OLLAMA_MODEL, base_url=OLLAMA_BASE_URL, temperature=0.5)
+
+
+@app.post("/api/think")
+async def think_start(body: ThinkRequest):
+    if not body.prompt.strip():
+        raise HTTPException(status_code=400, detail="prompt must be non-empty")
+
+    q: queue.Queue[dict | None] = queue.Queue()
+
+    def worker():
+        try:
+            import uuid
+            from agent.thinking_agent import (
+                ThinkingState,
+                _task_to_dict,
+                layer1_decompose,
+                layer2_critique,
+                layer3_execute,
+                layer4_verify,
+                layer5_checkpoint,
+            )
+            from services.thinking import ThinkingDB, create_session_vec_tables
+
+            llm = _make_thinking_llm()
+            session_id = uuid.uuid4().hex[:12]
+            db = ThinkingDB(_THINK_DB)
+            db.create_session(session_id, body.prompt, "task-ui")
+            create_session_vec_tables(session_id, _THINK_DB)
+
+            state = ThinkingState(
+                session_id=session_id,
+                original_prompt=body.prompt,
+                iteration=1,
+                tasks=[],
+                evidence=[],
+                status="running",
+            )
+
+            q.put({"type": "layer", "message": "Layer 1 — decomposing tasks…", "session_id": session_id})
+            state = layer1_decompose(state, llm, db)
+
+            q.put({"type": "layer", "message": f"Layer 2 — critiquing {len(state.tasks)} tasks…"})
+            state = layer2_critique(state, llm, db)
+            q.put({"type": "tasks", "tasks": [_task_to_dict(t) for t in state.tasks]})
+
+            pending = [t for t in state.tasks if t.status == "pending"]
+            q.put({"type": "layer", "message": f"Layer 3 — executing {len(pending)} tasks…"})
+            state = layer3_execute(state, llm, db)
+
+            q.put({"type": "layer", "message": f"Layer 4 — verifying {len(state.evidence)} evidence items…"})
+            state = layer4_verify(state, db)
+
+            q.put({"type": "layer", "message": "Layer 5 — writing checkpoint…"})
+            checkpoint = layer5_checkpoint(state, llm, db)
+
+            q.put({"type": "checkpoint", "text": checkpoint, "session_id": session_id})
+            q.put({"type": "done", "session_id": session_id, "is_done": False})
+        except Exception as e:
+            q.put({"type": "error", "message": str(e)})
+        finally:
+            q.put(None)
+
+    threading.Thread(target=worker, daemon=True).start()
+
+    async def stream():
+        loop = asyncio.get_event_loop()
+        while True:
+            event = await loop.run_in_executor(None, q.get)
+            if event is None:
+                break
+            yield f"data: {json.dumps(event)}\n\n"
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.post("/api/think/{session_id}/continue")
+async def think_continue(session_id: str, body: ThinkContinueRequest):
+    if not body.input.strip():
+        raise HTTPException(status_code=400, detail="input must be non-empty")
+
+    q: queue.Queue[dict | None] = queue.Queue()
+
+    def worker():
+        try:
+            from agent.thinking_agent import (
+                _classify_intent,
+                _load_state_from_db,
+                _task_to_dict,
+                layer1_decompose,
+                layer2_critique,
+                layer3_execute,
+                layer4_verify,
+                layer5_checkpoint,
+            )
+            from services.thinking import ThinkingDB
+
+            llm = _make_thinking_llm()
+            db = ThinkingDB(_THINK_DB)
+
+            intent = _classify_intent(body.input)
+            q.put({"type": "intent", "intent": intent, "message": f"Intent: {intent.replace('_', ' ')}"})
+
+            if intent == "stop":
+                db.update_session(session_id, status="done")
+                q.put({"type": "checkpoint", "text": "Thinking session complete. Checkpoints are in Obsidian staging for your review.", "session_id": session_id})
+                q.put({"type": "done", "session_id": session_id, "is_done": True})
+                return
+
+            session = db.get_session(session_id)
+            state = _load_state_from_db(session_id, session["iteration"] + 1, db)
+
+            if intent == "keep_going":
+                pending = [t for t in state.tasks if t.status == "pending"]
+                q.put({"type": "layer", "message": f"Layer 3 — continuing ({len(pending)} pending tasks)…"})
+                state = layer3_execute(state, llm, db)
+                q.put({"type": "layer", "message": "Layer 4 — verifying evidence…"})
+                state = layer4_verify(state, db)
+            else:
+                db.queue_injection(session_id, body.input)
+                q.put({"type": "layer", "message": "Layer 1 — processing injection (amendment pass)…"})
+                state = layer1_decompose(state, llm, db)
+                q.put({"type": "layer", "message": f"Layer 2 — critiquing updated tasks…"})
+                state = layer2_critique(state, llm, db)
+                q.put({"type": "tasks", "tasks": [_task_to_dict(t) for t in state.tasks]})
+                q.put({"type": "layer", "message": "Layer 3 — executing tasks…"})
+                state = layer3_execute(state, llm, db)
+                q.put({"type": "layer", "message": "Layer 4 — verifying evidence…"})
+                state = layer4_verify(state, db)
+
+            q.put({"type": "layer", "message": "Layer 5 — writing checkpoint…"})
+            checkpoint = layer5_checkpoint(state, llm, db)
+            q.put({"type": "tasks", "tasks": [_task_to_dict(t) for t in state.tasks]})
+            q.put({"type": "checkpoint", "text": checkpoint, "session_id": session_id})
+            q.put({"type": "done", "session_id": session_id, "is_done": False})
+        except Exception as e:
+            q.put({"type": "error", "message": str(e)})
+        finally:
+            q.put(None)
+
+    threading.Thread(target=worker, daemon=True).start()
+
+    async def stream():
+        loop = asyncio.get_event_loop()
+        while True:
+            event = await loop.run_in_executor(None, q.get)
+            if event is None:
+                break
+            yield f"data: {json.dumps(event)}\n\n"
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Chat endpoints
+# ---------------------------------------------------------------------------
+
+def _extract_text(content) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return " ".join(b.get("text", "") for b in content if b.get("type") == "text")
+    return ""
+
+
+def _serialize_chat_messages(messages) -> list[dict]:
+    from langchain_core.messages import HumanMessage as _HM, AIMessage as _AM
+    out = []
+    for msg in messages:
+        if isinstance(msg, _HM):
+            content = _extract_text(msg.content) if isinstance(msg.content, list) else msg.content
+            out.append({"role": "user", "content": content})
+        elif isinstance(msg, _AM):
+            text = msg.content if isinstance(msg.content, str) else _extract_text(msg.content)
+            if text:
+                out.append({"role": "assistant", "content": text})
+    return out
+
+
+class ChatRequest(BaseModel):
+    message: str
+    thread_id: str = "task-ui"
+
+
+@app.get("/api/chat/threads")
+def chat_threads_list():
+    try:
+        with sqlite3.connect(_CAD_DB) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT thread_id, title, created_at, updated_at "
+                "FROM chat_threads ORDER BY updated_at DESC"
+            ).fetchall()
+    except sqlite3.OperationalError:
+        return []
+    return [dict(r) for r in rows]
+
+
+@app.post("/api/chat/threads")
+def chat_create_thread():
+    import uuid
+    from datetime import datetime, timezone
+    thread_id = f"ui-{uuid.uuid4().hex[:12]}"
+    now = datetime.now(timezone.utc).isoformat()
+    with sqlite3.connect(_CAD_DB) as conn:
+        conn.execute(
+            "INSERT INTO chat_threads (thread_id, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
+            (thread_id, "New conversation", now, now),
+        )
+    return {"thread_id": thread_id, "title": "New conversation", "created_at": now, "updated_at": now}
+
+
+@app.get("/api/chat/history")
+def chat_history(thread_id: str = "task-ui"):
+    from agent.chatbot import get_server_workflow
+    wf = get_server_workflow()
+    config = {"configurable": {"thread_id": thread_id}}
+    state = wf.get_state(config)
+    if not state.values:
+        return {"messages": [], "thread_id": thread_id}
+    messages = list(state.values.get("messages", []))
+    return {"messages": _serialize_chat_messages(messages), "thread_id": thread_id}
+
+
+@app.post("/api/chat")
+async def chat_send(body: ChatRequest):
+    from langchain_core.messages import HumanMessage as _HM, AIMessage as _AM
+    from agent.chatbot import ask_chatbot, get_server_workflow
+    from core.config import CHATBOT_INTRO
+    from datetime import datetime, timezone
+
+    wf = get_server_workflow()
+    config = {"configurable": {"thread_id": body.thread_id}}
+
+    state = wf.get_state(config)
+    messages = []
+    if not state.values:
+        messages.append(_AM(content=CHATBOT_INTRO))
+    messages.append(_HM(body.message))
+
+    # Upsert thread registry — title set from first message, then frozen
+    now = datetime.now(timezone.utc).isoformat()
+    title = body.message[:60].strip()
+    with sqlite3.connect(_CAD_DB) as conn:
+        conn.execute(
+            """INSERT INTO chat_threads (thread_id, title, created_at, updated_at)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT(thread_id) DO UPDATE SET
+                 updated_at = excluded.updated_at,
+                 title = CASE WHEN chat_threads.title = 'New conversation'
+                              THEN excluded.title ELSE chat_threads.title END""",
+            (body.thread_id, title, now, now),
+        )
+
+    q: queue.Queue[dict | None] = queue.Queue()
+
+    def worker():
+        try:
+            for chunk in ask_chatbot(messages, config, workflow=wf):
+                q.put({"type": "chunk", "text": chunk})
+        except Exception as e:
+            q.put({"type": "error", "message": str(e)})
+        finally:
+            q.put(None)
+
+    threading.Thread(target=worker, daemon=True).start()
+
+    async def stream():
+        loop = asyncio.get_event_loop()
+        while True:
+            event = await loop.run_in_executor(None, q.get)
+            if event is None:
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                break
+            yield f"data: {json.dumps(event)}\n\n"
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
