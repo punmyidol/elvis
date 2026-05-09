@@ -1,7 +1,8 @@
 """
 gmail-module/fetch.py
 
-Fetch the first N emails from Gmail inbox, embed, and store in elvis.db.
+Fetch the first N emails from Gmail inbox, embed, and store in elvis.db
+via the unified vec_items/vec_metadata tables.
 
 Usage:
     cd gmail-module
@@ -12,14 +13,19 @@ Usage:
 import argparse
 import base64
 import os
+import sqlite3
 import sys
+from datetime import datetime
+from email.utils import parsedate_to_datetime
 
-# Run from gmail-module/ directory
+# Add gmail-module/ and chatbot/ to path
 sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../chatbot"))
 
 from auth import get_gmail_service
-from config import INBOX_MAX, DB_PATH
-from store import EmailRecord, init_email_tables, upsert_email, clear_emails
+from config import INBOX_MAX
+from agent.vector_store import upsert_vector, SourceType
+from core.config import DB_PATH
 
 
 def _decode_body(payload: dict) -> str:
@@ -47,11 +53,31 @@ def _get_header(headers: list, name: str) -> str:
     return ""
 
 
-def fetch_inbox(max_results: int = INBOX_MAX) -> list[EmailRecord]:
-    """Fetch up to max_results emails from Gmail inbox."""
+def _parse_date(raw_date: str) -> str:
+    """Parse RFC 2822 date header to ISO 8601. Falls back to now on failure."""
+    try:
+        return parsedate_to_datetime(raw_date).isoformat()
+    except Exception:
+        return datetime.now().isoformat()
+
+
+def _clear_emails(db_path: str = DB_PATH):
+    """Delete all stored email vectors from the unified table before re-ingesting."""
+    with sqlite3.connect(db_path) as conn:
+        rows = conn.execute(
+            "SELECT rowid FROM vec_metadata WHERE source_type = 'email'"
+        ).fetchall()
+        for (rowid,) in rows:
+            conn.execute("DELETE FROM vec_items WHERE rowid = ?", (rowid,))
+        conn.execute("DELETE FROM vec_metadata WHERE source_type = 'email'")
+        conn.commit()
+    print(f"[fetch] Cleared {len(rows)} existing email vector(s).")
+
+
+def fetch_inbox(max_results: int = INBOX_MAX) -> list:
+    """Fetch up to max_results emails from Gmail inbox. Returns list of dicts."""
     service = get_gmail_service()
 
-    # List message IDs
     result = (
         service.users()
         .messages()
@@ -77,19 +103,16 @@ def fetch_inbox(max_results: int = INBOX_MAX) -> list[EmailRecord]:
         date    = _get_header(headers, "Date")
         snippet = msg.get("snippet", "")
         body    = _decode_body(msg.get("payload", {})) or snippet
+        body    = body[:2000]
 
-        # Truncate body to keep embeddings focused
-        body = body[:2000]
-
-        email = EmailRecord(
-            message_id=msg_id,
-            subject=subject,
-            sender=sender,
-            date=date,
-            snippet=snippet,
-            body=body,
-        )
-        emails.append(email)
+        emails.append({
+            "msg_id":  msg_id,
+            "subject": subject,
+            "sender":  sender,
+            "date":    date,
+            "body":    body,
+            "snippet": snippet,
+        })
         print(f"  [{i}/{len(messages)}] {subject[:60]}")
 
     return emails
@@ -97,20 +120,34 @@ def fetch_inbox(max_results: int = INBOX_MAX) -> list[EmailRecord]:
 
 def main():
     parser = argparse.ArgumentParser(description="Fetch Gmail inbox and store as vectors")
-    parser.add_argument("--count", type=int, default=INBOX_MAX, help=f"Number of emails to fetch (default {INBOX_MAX})")
+    parser.add_argument(
+        "--count", type=int, default=INBOX_MAX,
+        help=f"Number of emails to fetch (default {INBOX_MAX})"
+    )
     args = parser.parse_args()
-
-    print("Initialising email vector tables...")
-    init_email_tables()
 
     print(f"\nFetching {args.count} emails from inbox...")
     emails = fetch_inbox(max_results=args.count)
 
-    print("\nClearing old emails...")
-    clear_emails()
+    print("\nClearing old email vectors...")
+    _clear_emails()
 
     print(f"\nEmbedding and storing {len(emails)} emails to {DB_PATH}...")
-    ok = sum(1 for e in emails if upsert_email(e))
+    ok = 0
+    for e in emails:
+        embed_content = f"Subject: {e['subject']}\nFrom: {e['sender']}\n\n{e['body'] or e['snippet']}"
+        content_date  = _parse_date(e["date"])
+        n = upsert_vector(
+            source_id=f"email/{e['msg_id']}",
+            source_type=SourceType.EMAIL,
+            content=embed_content,
+            title=e["subject"],
+            author=e["sender"],
+            content_date=content_date,
+        )
+        if n:
+            ok += 1
+
     print(f"\nDone. {ok}/{len(emails)} emails stored successfully.")
 
 

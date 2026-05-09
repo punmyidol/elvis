@@ -1,43 +1,35 @@
 """
 chatbot/services/gmail.py
 
-Retrieval-only wrapper around gmail-module.
-Adds gmail-module to sys.path, imports the KNN search functions,
-and returns formatted strings for the Elvis LLM to reason over.
-No LLM calls here — all reasoning is handled by the main agent.
+Gmail retrieval — queries the unified vec_items/vec_metadata tables directly.
+No sys.path hacks, no store.py bridge.
 """
 
-import importlib.util
-import os
-import sys
+import sqlite3
 
-_GMAIL_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "../../gmail-module"))
-if _GMAIL_DIR not in sys.path:
-    sys.path.insert(0, _GMAIL_DIR)
-
-# Force gmail-module/config.py into sys.modules['config'] to prevent collision with
-# obsidian-module/config.py when both module dirs are on sys.path simultaneously.
-_cfg_spec = importlib.util.spec_from_file_location("config", os.path.join(_GMAIL_DIR, "config.py"))
-_cfg_mod = importlib.util.module_from_spec(_cfg_spec)
-sys.modules["config"] = _cfg_mod
-_cfg_spec.loader.exec_module(_cfg_mod)
-
-from store import search_emails, list_emails
+from agent.vector_store import search_similar, SourceType
+from core.config import DB_PATH, VECTOR_TOP_K
 
 
-def search_gmail_logic(query: str, top_k: int = 5) -> str:
-    results = search_emails(query, top_k=top_k)
+def search_gmail_logic(query: str, top_k: int = VECTOR_TOP_K) -> str:
+    results = search_similar(query, source_types=[SourceType.EMAIL], top_k=top_k)
     if not results:
         return "No relevant emails found."
-    parts = [
-        f"From: {e.sender}\nDate: {e.date}\nSubject: {e.subject}\n{e.body[:600] or e.snippet[:200]}"
-        for e in results
-    ]
+    parts = [content[:800] for _, _, content, _ in results]
     return "\n\n---\n\n".join(parts)
 
 
 def list_gmail_logic() -> str:
-    emails = list_emails()
-    if not emails:
+    with sqlite3.connect(DB_PATH) as conn:
+        rows = conn.execute("""
+            SELECT source_id, title, author, created_at
+            FROM vec_metadata
+            WHERE source_type = 'email'
+            ORDER BY created_at DESC
+        """).fetchall()
+    if not rows:
         return "No emails stored. Run gmail-module/fetch.py first."
-    return "\n".join(f"[{e.date}] {e.subject} — from {e.sender}" for e in emails)
+    return "\n".join(
+        f"[{row[3][:10]}] {row[1] or '(no subject)'} — from {row[2] or 'unknown'}"
+        for row in rows
+    )

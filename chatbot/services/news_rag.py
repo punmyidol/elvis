@@ -6,14 +6,14 @@ Uses the chatbot's own search_similar() — no separate module needed.
 No LLM calls here — all reasoning is handled by the main agent.
 """
 
-from agent.vector_store import search_similar
+from agent.vector_store import search_similar, SourceType
 from core.config import DB_PATH, VECTOR_TOP_K
 
 
 def search_docs_logic(query: str, source_filter: str = "", top_k: int = VECTOR_TOP_K) -> str:
     # Over-fetch so post-filtering still returns enough results
     fetch_n = top_k * 10 if source_filter else top_k
-    results = search_similar(query, source_type="document", top_k=fetch_n, db_path=DB_PATH)
+    results = search_similar(query, source_types=[SourceType.DOC], top_k=fetch_n, db_path=DB_PATH)
     if not results:
         return "No relevant documents found."
 

@@ -24,7 +24,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from agent.vector_store import upsert_vector
+from agent.vector_store import upsert_vector, SourceType
 from core.config import DB_PATH
 
 
@@ -227,7 +227,7 @@ def main():
     for i, (source_id, content) in enumerate(items, 1):
         label = source_id.split("::")[-1]
         try:
-            n = upsert_vector(source_id, "cadquery_docs", content, db_path=DB_PATH)
+            n = upsert_vector(source_id, SourceType.CADQUERY_DOCS, content, db_path=DB_PATH)
             if n:
                 ok += 1
                 print(f"  [{i:>3}/{len(items)}] {label}")

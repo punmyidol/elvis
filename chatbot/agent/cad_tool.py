@@ -70,8 +70,8 @@ result = outer.shell(-3)             # 3mm wall thickness
 def _search_cadquery_docs(query: str, k: int = 20, db_path: Optional[str] = None) -> str:
     """Return relevant CadQuery doc chunks, or empty string if collection not yet populated."""
     try:
-        from agent.vector_store import search_similar
-        results = search_similar(query, "cadquery_docs", top_k=k, db_path=db_path or DB_PATH)
+        from agent.vector_store import search_similar, SourceType
+        results = search_similar(query, source_types=[SourceType.CADQUERY_DOCS], top_k=k, db_path=db_path or DB_PATH)
         return "\n\n".join(content for _, _, content, _ in results)
     except Exception:
         return ""

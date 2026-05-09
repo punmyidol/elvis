@@ -130,9 +130,9 @@ def _delete_old_news(db_path: str = DB_PATH):
 
     if old_ids:
         try:
-            from agent.vector_store import delete_vector
+            from agent.vector_store import delete_vector, SourceType
             for (old_id,) in old_ids:
-                delete_vector(str(old_id), "news")
+                delete_vector(str(old_id), SourceType.NEWS)
         except Exception as e:
             print(f"[News] Vector cleanup failed: {e}")
 
@@ -188,11 +188,11 @@ def fetch_and_cache(db_path: str = DB_PATH):
         print(f"[News] Cached {len(rows)} articles for '{topic}'")
 
         try:
-            from agent.vector_store import upsert_vector
+            from agent.vector_store import upsert_vector, SourceType
             for news_id, headline, summary in inserted:
                 embed_text = f"{headline}. {summary}"
                 upsert_vector(
-                    source_type="news",
+                    source_type=SourceType.NEWS,
                     source_id=str(news_id),
                     content=embed_text,
                 )
@@ -232,9 +232,9 @@ def search_news_semantic(
     db_path: str = DB_PATH,
 ) -> List[NewsItem]:
     """Semantic search over today's cached news."""
-    from agent.vector_store import search_similar
+    from agent.vector_store import search_similar, SourceType
 
-    results = search_similar(query=query, source_type="news", top_k=top_k)
+    results = search_similar(query=query, source_types=[SourceType.NEWS], top_k=top_k)
     if not results:
         return []
 
