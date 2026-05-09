@@ -39,6 +39,9 @@ class SourceType(str, Enum):
 # Types stored in the unified vec_items/vec_metadata tables
 UNIFIED_TYPES = {SourceType.EMAIL}
 
+# Types that are auto-chunked; stale chunks are pre-deleted before re-index
+CHUNKED_TYPES = {SourceType.DOC, SourceType.OBSIDIAN}
+
 VECTOR_DIM = 768
 CHUNK_SIZE = 400    # words per chunk
 CHUNK_OVERLAP = 50  # word overlap between chunks
@@ -215,6 +218,22 @@ def _upsert_unified(
         )
 
 
+def _delete_chunks(conn, base_source_id: str):
+    """Delete all vec_items + vec_metadata rows for a base source_id (unified tables)."""
+    rows = conn.execute(
+        "SELECT rowid FROM vec_metadata WHERE source_id LIKE ?",
+        (base_source_id + "::%",),
+    ).fetchall()
+    for (rowid,) in rows:
+        conn.execute("DELETE FROM vec_items WHERE rowid = ?", (rowid,))
+    conn.execute(
+        "DELETE FROM vec_metadata WHERE source_id LIKE ?",
+        (base_source_id + "::%",),
+    )
+    if rows:
+        print(f"[VectorStore] Deleted {len(rows)} stale chunk(s) for '{base_source_id}'")
+
+
 # ---------------------------------------------------------------------------
 # Write
 # ---------------------------------------------------------------------------
@@ -224,40 +243,52 @@ def upsert_vector(
     source_type: SourceType,
     content: str,
     member_id: str = "shared",
-    title: Optional[str] = None,
-    author: Optional[str] = None,
     content_date: Optional[str] = None,
     db_path: str = DB_PATH,
+    **kwargs,
 ) -> int:
     """
     Embed and store content.
-    - EMAIL → unified vec_items/vec_metadata tables
-    - DOC   → per-type tables, auto-chunked (400 words, 50 overlap)
-    - NEWS / CADQUERY_DOCS → per-type tables, single vector
+    Phase 1: embed all chunks outside the DB connection (no lock held during Ollama calls).
+    Phase 2: open one short-lived connection — delete stale chunks, insert new batch.
+
+    - CHUNKED (DOC, OBSIDIAN) → auto-chunked; stale chunks pre-deleted before insert
+    - UNIFIED (EMAIL) → unified vec_items/vec_metadata
+    - Per-type (NEWS, CADQUERY_DOCS) → dedicated tables, single vector
     Returns number of vectors upserted.
     """
     source_type = SourceType(source_type)  # raises ValueError on unknown strings
     is_unified = source_type in UNIFIED_TYPES
-    is_chunked = source_type == SourceType.DOC
+    is_chunked = source_type in CHUNKED_TYPES
     chunks = _chunk_text(content) if is_chunked else [content]
     uids = [f"{source_id}::chunk_{i}" for i in range(len(chunks))] if is_chunked else [source_id]
 
+    # Phase 1: embed all chunks — outside the DB connection
+    packed_chunks = []
+    for uid, chunk in zip(uids, chunks):
+        try:
+            vector = embed_text(chunk)
+            packed_chunks.append((uid, chunk, _pack(vector)))
+        except Exception as e:
+            print(f"[VectorStore] Embedding failed for '{uid}': {e}")
+
+    if not packed_chunks:
+        return 0
+
+    # Phase 2: open connection, delete stale, insert new — as short as possible
     with sqlite3.connect(db_path) as conn:
         conn.enable_load_extension(True)
         sqlite_vec.load(conn)
         conn.enable_load_extension(False)
 
+        if is_chunked:
+            _delete_chunks(conn, source_id)
+
         stored = 0
-        for uid, chunk in zip(uids, chunks):
-            try:
-                vector = embed_text(chunk)
-            except Exception as e:
-                print(f"[VectorStore] Embedding failed for '{uid}': {e}")
-                continue
-            packed = _pack(vector)
+        for uid, chunk, packed in packed_chunks:
             if is_unified:
                 _upsert_unified(conn, uid, source_type, member_id, chunk, packed,
-                                title=title, author=author, content_date=content_date)
+                                content_date=content_date, **kwargs)
             else:
                 vec_table, meta_table = _tables(source_type)
                 _upsert_one(conn, vec_table, meta_table, uid, chunk, packed)
