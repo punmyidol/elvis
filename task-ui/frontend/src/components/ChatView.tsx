@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import ReactMarkdown from 'react-markdown'
-import { createChatThread, fetchChatHistory, fetchChatThreads, sendChatMessage } from '../api'
+import { createChatThread, deleteChatThread, fetchChatHistory, fetchChatThreads, sendChatMessage } from '../api'
+import { ChatMarkdownContent } from './FileViewer'
 import type { ChatEvent, ChatMessage, ChatThread } from '../types'
 
 const WELCOME: ChatMessage = {
@@ -16,16 +16,26 @@ function relativeTime(iso: string): string {
   return `${Math.floor(ms / 86_400_000)}d ago`
 }
 
+function TrashIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
+      <path d="M5.5 1.5A1.5 1.5 0 0 1 7 0h2a1.5 1.5 0 0 1 1.5 1.5H12a1 1 0 0 1 0 2H4a1 1 0 0 1 0-2h1.5ZM4.118 4.5l.69 8.283A1 1 0 0 0 5.8 13.8h4.4a1 1 0 0 0 .994-.917l.69-8.283H4.118Z" />
+    </svg>
+  )
+}
+
 function Sidebar({
   threads,
   activeId,
   onSelect,
   onNew,
+  onDelete,
 }: {
   threads: ChatThread[]
   activeId: string
   onSelect: (id: string) => void
   onNew: () => void
+  onDelete: (id: string) => void
 }) {
   return (
     <div className="w-52 shrink-0 flex flex-col border-r border-gray-800 pr-3 mr-5 min-h-0">
@@ -40,18 +50,31 @@ function Sidebar({
           <p className="text-[11px] text-gray-700 px-3 py-2">No conversations yet</p>
         )}
         {threads.map(t => (
-          <button
+          <div
             key={t.thread_id}
-            onClick={() => onSelect(t.thread_id)}
-            className={`w-full text-left px-3 py-2.5 rounded-md transition-colors ${
+            className={`group relative flex items-center rounded-md transition-colors ${
               t.thread_id === activeId
-                ? 'bg-gray-800 text-gray-100'
-                : 'text-gray-500 hover:text-gray-300 hover:bg-gray-900'
+                ? 'bg-gray-800'
+                : 'hover:bg-gray-900'
             }`}
           >
-            <p className="text-xs leading-snug truncate">{t.title}</p>
-            <p className="text-[10px] text-gray-600 mt-0.5">{relativeTime(t.updated_at)}</p>
-          </button>
+            <button
+              onClick={() => onSelect(t.thread_id)}
+              className={`flex-1 text-left px-3 py-2.5 min-w-0 ${
+                t.thread_id === activeId ? 'text-gray-100' : 'text-gray-500 hover:text-gray-300'
+              }`}
+            >
+              <p className="text-xs leading-snug truncate pr-5">{t.title}</p>
+              <p className="text-[10px] text-gray-600 mt-0.5">{relativeTime(t.updated_at)}</p>
+            </button>
+            <button
+              onClick={e => { e.stopPropagation(); onDelete(t.thread_id) }}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-1 rounded text-gray-600 hover:text-red-400 transition-all"
+              title="Delete conversation"
+            >
+              <TrashIcon />
+            </button>
+          </div>
         ))}
       </div>
     </div>
@@ -62,15 +85,7 @@ function UserBubble({ content }: { content: string }) {
   return (
     <div className="flex justify-end">
       <div className="max-w-[75%] bg-gray-800 rounded-2xl rounded-tr-sm px-4 py-2.5">
-        <div className="prose prose-invert prose-sm max-w-none
-          prose-p:text-gray-100 prose-p:leading-relaxed prose-p:my-0.5
-          prose-strong:text-white
-          prose-ul:my-1 prose-ol:my-1 prose-li:text-gray-100 prose-li:my-0
-          prose-code:text-gray-200 prose-code:bg-gray-700 prose-code:px-1 prose-code:rounded prose-code:text-xs
-          prose-pre:bg-gray-700 prose-pre:border prose-pre:border-gray-600 prose-pre:rounded-lg
-        ">
-          <ReactMarkdown>{content}</ReactMarkdown>
-        </div>
+        <ChatMarkdownContent content={content} />
       </div>
     </div>
   )
@@ -80,19 +95,7 @@ function AssistantBubble({ content, streaming = false }: { content: string; stre
   return (
     <div className="flex justify-start">
       <div className="max-w-[90%]">
-        <div className="prose prose-invert prose-sm max-w-none
-          prose-headings:text-gray-200 prose-headings:font-semibold prose-headings:mt-3 prose-headings:mb-1
-          prose-p:text-gray-300 prose-p:leading-relaxed prose-p:my-1
-          prose-strong:text-gray-200
-          prose-ul:my-1 prose-ol:my-1
-          prose-li:text-gray-300 prose-li:my-0
-          prose-hr:border-gray-800
-          prose-table:text-sm prose-th:text-gray-300 prose-td:text-gray-400 prose-td:border-gray-800
-          prose-code:text-gray-300 prose-code:bg-gray-900 prose-code:px-1 prose-code:rounded prose-code:text-xs
-          prose-pre:bg-gray-900 prose-pre:border prose-pre:border-gray-800 prose-pre:rounded-lg
-        ">
-          <ReactMarkdown>{content}</ReactMarkdown>
-        </div>
+        <ChatMarkdownContent content={content} />
         {streaming && (
           <span className="inline-block w-2 h-4 bg-gray-500 animate-pulse ml-0.5 align-text-bottom" />
         )}
@@ -121,6 +124,7 @@ export default function ChatView() {
   const [streaming, setStreaming] = useState(false)
   const [streamingText, setStreamingText] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [obsidianOnly, setObsidianOnly] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -168,6 +172,22 @@ export default function ChatView() {
     setThreadId(id)
   }
 
+  const handleDelete = async (id: string) => {
+    if (streaming) return
+    try {
+      await deleteChatThread(id)
+      const updated = threads.filter(t => t.thread_id !== id)
+      setThreads(updated)
+      if (id === threadId) {
+        const next = updated[0]?.thread_id ?? ''
+        setThreadId(next)
+        if (!next) setMessages([WELCOME])
+      }
+    } catch (e) {
+      setError(String(e))
+    }
+  }
+
   const handleNew = async () => {
     if (streaming) return
     try {
@@ -211,7 +231,9 @@ export default function ChatView() {
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!input.trim() || streaming || !threadId) return
-    const text = input.trim()
+    const text = obsidianOnly
+      ? input.trim() + '\n\nSearch only in the Obsidian vault.'
+      : input.trim()
     setInput('')
     await sendMessage(text)
   }
@@ -238,13 +260,14 @@ export default function ChatView() {
         activeId={threadId}
         onSelect={handleSelectThread}
         onNew={handleNew}
+        onDelete={handleDelete}
       />
 
       {/* Chat pane */}
       <div className="flex flex-col flex-1 min-w-0">
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto space-y-4 pb-2 min-h-0">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden space-y-4 pb-2 min-h-0">
           {!threadId ? (
             <p className="text-xs text-gray-600 py-8 text-center">Start a new chat or select one</p>
           ) : (
@@ -276,6 +299,17 @@ export default function ChatView() {
             className="px-3 py-1 text-[11px] rounded-full border border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
           >
             Daily Briefing
+          </button>
+          <button
+            onClick={() => setObsidianOnly(v => !v)}
+            disabled={!threadId}
+            className={`px-3 py-1 text-[11px] rounded-full border transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
+              obsidianOnly
+                ? 'border-violet-600 bg-violet-900/40 text-violet-300'
+                : 'border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500'
+            }`}
+          >
+            Obsidian Only
           </button>
         </div>
 

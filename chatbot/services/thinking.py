@@ -186,7 +186,15 @@ class ThinkingDB:
     # Tasks
 
     def create_task(self, session_id: str, task_dict: dict, iteration: int) -> None:
-        task_id = task_dict.get("id") or f"task_{uuid.uuid4().hex[:6]}"
+        # Prefix LLM-assigned IDs with session to prevent cross-session collisions
+        prefix = session_id[:8] + "_"
+        raw_id = task_dict.get("id") or f"task_{uuid.uuid4().hex[:6]}"
+        task_id = raw_id if raw_id.startswith(prefix) else prefix + raw_id
+        # Rewrite depends_on refs to use the same prefix
+        depends_on = [
+            (d if d.startswith(prefix) else prefix + d)
+            for d in task_dict.get("depends_on", [])
+        ]
         with self._conn() as conn:
             conn.execute(
                 "INSERT OR IGNORE INTO thinking_tasks "
@@ -198,7 +206,7 @@ class ThinkingDB:
                     task_dict.get("description", ""),
                     task_dict.get("type", "research_task"),
                     iteration,
-                    json.dumps(task_dict.get("depends_on", [])),
+                    json.dumps(depends_on),
                 ),
             )
             conn.commit()

@@ -68,8 +68,38 @@ def update_obsidian_note_logic(note_ref: str, body: str, tags: list = None) -> s
         return str(e)
 
 
+def get_recent_edits_logic(days: int = 7) -> str:
+    """Return vault notes modified within the last `days` days, newest first."""
+    from datetime import datetime, timedelta
+    from pathlib import Path
+
+    vault = Path(VAULT_ROOT)
+    if not vault.is_dir():
+        return f"Vault unavailable: {VAULT_ROOT}"
+
+    cutoff = datetime.now() - timedelta(days=days)
+    results = []
+    for md in vault.rglob("*.md"):
+        try:
+            mtime = datetime.fromtimestamp(md.stat().st_mtime)
+        except OSError:
+            continue
+        if mtime >= cutoff:
+            rel = str(md.relative_to(vault))
+            results.append((mtime, rel))
+
+    if not results:
+        return f"No notes modified in the last {days} day(s)."
+
+    results.sort(reverse=True)
+    lines = [f"## Notes edited in the last {days} day(s)\n"]
+    for mtime, rel in results:
+        lines.append(f"- {rel}  _(last edited {mtime.strftime('%Y-%m-%d %H:%M')})_")
+    return "\n".join(lines)
+
+
 def get_today_plan_logic() -> str:
-    """Read today's daily, yesterday's carried-over items, and todolist.md.
+    """Scan last 7 daily notes for unchecked tasks, plus todolist.md.
     Pure file IO — no embeddings, no semantic match.
     """
     from datetime import date, timedelta
@@ -81,30 +111,55 @@ def get_today_plan_logic() -> str:
         return f"Vault unavailable: {VAULT_ROOT}"
 
     today = date.today()
-    yesterday = today - timedelta(days=1)
-    today_path = vault / "dailies" / f"{today.isoformat()}.md"
-    yest_path = vault / "dailies" / f"{yesterday.isoformat()}.md"
-    todo_path = vault / "todolist.md"
-
     parts = [f"# Today's Plan — {today.strftime('%A, %d %B %Y')}\n"]
 
-    parts.append(f"## From dailies/{today.isoformat()}.md")
-    if today_path.exists():
-        parts.append(today_path.read_text(encoding="utf-8").strip())
+    # Collect unchecked, non-empty tasks from last 7 daily notes.
+    # Iterate oldest-first so newest day wins on duplicate task text.
+    task_seen: dict = {}  # normalized_text -> (date_iso, raw_line)
+    for delta in reversed(range(7)):
+        day = today - timedelta(days=delta)
+        note_path = vault / "dailies" / f"{day.isoformat()}.md"
+        if not note_path.exists():
+            continue
+        text = note_path.read_text(encoding="utf-8")
+        m = re.search(
+            r"##\s*🎯\s*Top 3 Today\s*\n(.*?)(?=\n---|\n##|\Z)",
+            text,
+            re.DOTALL,
+        )
+        if not m:
+            continue
+        for line in m.group(1).splitlines():
+            stripped = line.strip()
+            if re.match(r"^- \[ \]\s*$", stripped):  # bare empty checkbox
+                continue
+            if re.match(r"^- \[[xX]\]", stripped):  # completed task
+                continue
+            if not re.match(r"^- \[ \]", stripped):  # not a checkbox at all
+                continue
+            task_text = re.sub(r"^- \[ \]\s*", "", stripped)
+            if not task_text.strip():
+                continue
+            key = re.sub(r"\s+", " ", task_text.lower().strip())
+            task_seen[key] = (day.isoformat(), stripped)
+
+    if task_seen:
+        parts.append("## Tasks from last 7 days")
+        for _key, (day_iso, raw_line) in task_seen.items():
+            parts.append(f"{raw_line}  _(from {day_iso})_")
     else:
-        parts.append(f"_Today's daily note (dailies/{today.isoformat()}.md) does not exist yet._")
+        parts.append("## Tasks from last 7 days\n_No open tasks found in last 7 daily notes._")
 
-    if yest_path.exists():
-        text = yest_path.read_text(encoding="utf-8")
-        m = re.search(r"\*\*Carried over:\*\*\s*\n(.+?)(?=\n\*\*|\Z)", text, re.DOTALL)
-        carried = m.group(1).strip() if m else ""
-        if carried:
-            parts.append(f"## Carried over from {yesterday.isoformat()}\n{carried}")
-
+    todo_path = vault / "todolist.md"
     parts.append("## todolist.md")
     if todo_path.exists():
         body = todo_path.read_text(encoding="utf-8").strip()
-        parts.append(body if body else "_(empty)_")
+        filtered = [
+            ln for ln in body.splitlines()
+            if not re.match(r"^- \[ \]\s*$", ln.strip())
+        ]
+        result = "\n".join(filtered).strip()
+        parts.append(result if result else "_(empty)_")
     else:
         parts.append("_todolist.md does not exist._")
 

@@ -342,6 +342,7 @@ async def think_start(body: ThinkRequest):
             import uuid
             from agent.thinking_agent import (
                 ThinkingState,
+                _detect_location,
                 _task_to_dict,
                 layer1_decompose,
                 layer2_critique,
@@ -357,6 +358,7 @@ async def think_start(body: ThinkRequest):
             db.create_session(session_id, body.prompt, "task-ui")
             create_session_vec_tables(session_id, _THINK_DB)
 
+            location = _detect_location()
             state = ThinkingState(
                 session_id=session_id,
                 original_prompt=body.prompt,
@@ -364,21 +366,35 @@ async def think_start(body: ThinkRequest):
                 tasks=[],
                 evidence=[],
                 status="running",
+                location=location,
             )
 
-            q.put({"type": "layer", "message": "Layer 1 — decomposing tasks…", "session_id": session_id})
+            q.put({"type": "layer", "message": "Layer 1 — decomposing tasks…", "session_id": session_id, "location": location})
             state = layer1_decompose(state, llm, db)
+            for t in state.tasks:
+                q.put({"type": "verbose", "layer": 1, "message": f"  [{t.id}] ({t.type}) {t.description}"})
 
             q.put({"type": "layer", "message": f"Layer 2 — critiquing {len(state.tasks)} tasks…"})
+            tasks_before = {t.id: t.description for t in state.tasks}
             state = layer2_critique(state, llm, db)
+            for t in state.tasks:
+                if t.id not in tasks_before:
+                    q.put({"type": "verbose", "layer": 2, "message": f"  [NEW {t.id}] ({t.type}) {t.description}"})
+                elif tasks_before[t.id] != t.description:
+                    q.put({"type": "verbose", "layer": 2, "message": f"  [REVISED {t.id}] {t.description}"})
+                else:
+                    q.put({"type": "verbose", "layer": 2, "message": f"  [OK {t.id}] {t.description}"})
             q.put({"type": "tasks", "tasks": [_task_to_dict(t) for t in state.tasks]})
 
             pending = [t for t in state.tasks if t.status == "pending"]
             q.put({"type": "layer", "message": f"Layer 3 — executing {len(pending)} tasks…"})
-            state = layer3_execute(state, llm, db)
+            state = layer3_execute(state, llm, db, on_event=q.put)
 
             q.put({"type": "layer", "message": f"Layer 4 — verifying {len(state.evidence)} evidence items…"})
             state = layer4_verify(state, db)
+            for ev in state.evidence:
+                status = "RELEVANT" if ev.relevant else "REJECTED"
+                q.put({"type": "verbose", "layer": 4, "message": f"  [{status}] {ev.source[:80]} ({len(ev.content)} chars)"})
 
             q.put({"type": "layer", "message": "Layer 5 — writing checkpoint…"})
             checkpoint = layer5_checkpoint(state, llm, db)
@@ -405,6 +421,31 @@ async def think_start(body: ThinkRequest):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@app.post("/api/think/{session_id}/apply")
+def think_apply_to_vault(session_id: str):
+    session_dir = _STAGING_ROOT / session_id
+    if not session_dir.exists():
+        raise HTTPException(status_code=404, detail="session staging not found")
+
+    vault_root = os.getenv(
+        "NOTES_VAULT_ROOT",
+        "/Users/punmyidol/Library/Mobile Documents/iCloud~md~obsidian/Documents/elvis",
+    )
+    dest_dir = Path(vault_root) / "Thinking" / session_id
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    applied = []
+    for f in sorted(session_dir.iterdir()):
+        if f.suffix == ".md" and f.is_file():
+            (dest_dir / f.name).write_text(f.read_text(encoding="utf-8"), encoding="utf-8")
+            applied.append(f.name)
+
+    if not applied:
+        raise HTTPException(status_code=404, detail="no markdown files found in staging")
+
+    return {"applied": applied, "destination": str(dest_dir)}
 
 
 @app.post("/api/think/{session_id}/continue")
@@ -545,6 +586,18 @@ def chat_create_thread():
             (thread_id, "New conversation", now, now),
         )
     return {"thread_id": thread_id, "title": "New conversation", "created_at": now, "updated_at": now}
+
+
+@app.delete("/api/chat/threads/{thread_id}")
+def chat_delete_thread(thread_id: str):
+    with sqlite3.connect(_CAD_DB) as conn:
+        conn.execute("DELETE FROM chat_threads WHERE thread_id = ?", (thread_id,))
+        for table in ("checkpoints", "checkpoint_blobs", "checkpoint_writes"):
+            try:
+                conn.execute(f"DELETE FROM {table} WHERE thread_id = ?", (thread_id,))
+            except sqlite3.OperationalError:
+                pass
+    return {"status": "deleted", "thread_id": thread_id}
 
 
 @app.get("/api/chat/history")

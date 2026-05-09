@@ -326,16 +326,42 @@ def search_obsidian(query: str) -> str:
 @tool
 def get_today_plan() -> str:
     """
-    Get the user's plan for today: today's daily note (dailies/YYYY-MM-DD.md),
-    yesterday's carried-over items, and the global todolist.md. No arguments.
+    Get the user's daily briefing: open tasks from the last 7 daily notes,
+    the global todolist.md, and upcoming calendar events for the next 7 days.
+    No arguments.
 
     IMMEDIATELY call this tool — do NOT call search_obsidian — whenever the user asks
     any of: "what should I work on / be working on", "what's my plan today",
     "what's on my plate", "what's next", "today's tasks", "what do I have to do today",
-    "my todos". Returns raw markdown; you summarise it for the user.
+    "my todos", "morning briefing", "daily briefing". Returns structured markdown;
+    format it into a clean briefing. Do NOT call get_calendar separately for briefings —
+    calendar events are already included here.
     """
     from services.obsidian import get_today_plan_logic
-    return get_today_plan_logic()
+    from services.elvis_calendar import get_events_for_range, format_events_for_llm
+
+    plan = get_today_plan_logic()
+
+    try:
+        start = datetime.now()
+        end = start + timedelta(days=7)
+        events = get_events_for_range(start, end)
+        cal_section = "\n\n## Upcoming Calendar Events (next 7 days)\n" + format_events_for_llm(events)
+    except Exception as e:
+        cal_section = f"\n\n## Upcoming Calendar Events\n_Could not load calendar: {e}_"
+
+    return plan + cal_section
+
+
+@tool
+def get_recent_edits(days: int = 7) -> str:
+    """
+    List Obsidian vault notes that were edited within the last N days (default 7).
+    Use this when the user asks "what have I been working on lately", "what notes did I edit
+    recently", "show me my recent changes", or any question about recently modified notes.
+    """
+    from services.obsidian import get_recent_edits_logic
+    return get_recent_edits_logic(days)
 
 
 @tool
@@ -438,7 +464,7 @@ ELVIS_TOOLS = [
     get_current_time, web_search, fetch_url, get_news,
     get_calendar, list_calendars, create_calendar_event, delete_calendar_event, update_calendar_event,
     remember, show_memories, delete_memory,
-    search_gmail, search_obsidian, get_today_plan, read_obsidian_note, update_obsidian_note, search_documents,
+    search_gmail, search_obsidian, get_today_plan, get_recent_edits, read_obsidian_note, update_obsidian_note, search_documents,
     list_documents, read_document, write_document, delete_document, move_document,
     generate_cad_model,
 ]

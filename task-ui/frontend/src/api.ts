@@ -162,6 +162,17 @@ export async function* sendChatMessage(message: string, threadId: string): Async
   yield* _sseStream<ChatEvent>(res)
 }
 
+export async function applyThinkToVault(sessionId: string): Promise<{ applied: string[]; destination: string }> {
+  const res = await fetch(`${BASE}/think/${sessionId}/apply`, { method: 'POST' })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function deleteChatThread(threadId: string): Promise<void> {
+  const res = await fetch(`${BASE}/chat/threads/${encodeURIComponent(threadId)}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(await res.text())
+}
+
 export async function* continueThinking(sessionId: string, input: string): AsyncGenerator<ThinkEvent> {
   const res = await fetch(`${BASE}/think/${sessionId}/continue`, {
     method: 'POST',

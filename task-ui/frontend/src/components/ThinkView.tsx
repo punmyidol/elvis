@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import ReactMarkdown from 'react-markdown'
-import { continueThinking, fetchThinkFile, fetchThinkFiles, fetchThinkSession, fetchThinkSessions, startThinking } from '../api'
+import { applyThinkToVault, continueThinking, fetchThinkFile, fetchThinkFiles, fetchThinkSession, fetchThinkSessions, startThinking } from '../api'
 import type { ThinkEvent, ThinkFile, ThinkSessionSummary, ThinkTask } from '../types'
+import FileViewer, { MarkdownContent } from './FileViewer'
 
 function TaskBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {
@@ -121,6 +121,23 @@ function SessionList({
   )
 }
 
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+  return (
+    <button
+      onClick={handleCopy}
+      className="text-[11px] text-gray-600 hover:text-gray-400 transition-colors"
+    >
+      {copied ? '✓ copied' : 'copy'}
+    </button>
+  )
+}
+
 function fileLabel(f: ThinkFile): string {
   if (f.is_checkpoint) {
     const n = f.filename.match(/checkpoint_(\d+)/)?.[1] ?? '?'
@@ -142,8 +159,10 @@ export default function ThinkView() {
   const [error, setError] = useState<string | null>(null)
   const [sessions, setSessions] = useState<ThinkSessionSummary[]>([])
   const [files, setFiles] = useState<ThinkFile[]>([])
-  const [openFile, setOpenFile] = useState<{ label: string; content: string } | null>(null)
+  const [openFile, setOpenFile] = useState<{ label: string; filename: string; content: string } | null>(null)
   const [fileLoading, setFileLoading] = useState(false)
+  const [applyStatus, setApplyStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
+  const [applyResult, setApplyResult] = useState<{ applied: string[]; destination: string } | null>(null)
   const continueRef = useRef<HTMLInputElement>(null)
 
   const loadSessions = async () => {
@@ -197,11 +216,24 @@ export default function ThinkView() {
     setFileLoading(true)
     try {
       const content = await fetchThinkFile(sessionId, f.filename)
-      setOpenFile({ label: fileLabel(f), content })
+      setOpenFile({ label: fileLabel(f), filename: f.filename, content })
     } catch (e) {
       setError(String(e))
     } finally {
       setFileLoading(false)
+    }
+  }
+
+  const handleApplyToVault = async () => {
+    if (!sessionId || applyStatus === 'loading') return
+    setApplyStatus('loading')
+    try {
+      const result = await applyThinkToVault(sessionId)
+      setApplyResult(result)
+      setApplyStatus('done')
+    } catch (e) {
+      setError(String(e))
+      setApplyStatus('error')
     }
   }
 
@@ -216,6 +248,8 @@ export default function ThinkView() {
     setOpenFile(null)
     setIsDone(false)
     setSessionStatus('running')
+    setApplyStatus('idle')
+    setApplyResult(null)
     await runStream(startThinking(prompt.trim()))
   }
 
@@ -259,6 +293,8 @@ export default function ThinkView() {
     setIsDone(false)
     setSessionStatus('running')
     setError(null)
+    setApplyStatus('idle')
+    setApplyResult(null)
   }
 
   const hasSession = sessionId !== null || streaming || checkpoint !== null
@@ -304,7 +340,7 @@ export default function ThinkView() {
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Topic</p>
-            <p className="text-sm text-gray-300">{prompt}</p>
+            <MarkdownContent content={prompt} />
             {sessionId && (
               <p className="text-[10px] font-mono text-gray-600 mt-0.5">{sessionId}</p>
             )}
@@ -349,7 +385,19 @@ export default function ThinkView() {
       {/* — Files — */}
       {files.length > 0 && (
         <div className="border border-gray-800 rounded-lg p-4 space-y-2">
-          <p className="text-xs text-gray-500 uppercase tracking-wider">Files</p>
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-gray-500 uppercase tracking-wider">Files</p>
+            <button
+              onClick={handleApplyToVault}
+              disabled={applyStatus === 'loading' || applyStatus === 'done'}
+              className="text-[11px] px-2.5 py-1 rounded bg-gray-800 hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed text-gray-300 transition-colors"
+            >
+              {applyStatus === 'loading' ? 'Moving…' : applyStatus === 'done' ? '✓ In vault' : 'Move to Vault'}
+            </button>
+          </div>
+          {applyResult && (
+            <p className="text-[10px] text-gray-600 font-mono truncate">{applyResult.destination}</p>
+          )}
           <div className="space-y-1">
             {files.map(f => (
               <button
@@ -374,23 +422,18 @@ export default function ThinkView() {
         <div className="border border-gray-700 rounded-lg">
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-800">
             <p className="text-xs text-gray-400">{openFile.label}</p>
-            <button
-              onClick={() => setOpenFile(null)}
-              className="text-[11px] text-gray-600 hover:text-gray-400 transition-colors"
-            >
-              ✕ close
-            </button>
+            <div className="flex items-center gap-3">
+              <CopyButton text={openFile.content} />
+              <button
+                onClick={() => setOpenFile(null)}
+                className="text-[11px] text-gray-600 hover:text-gray-400 transition-colors"
+              >
+                ✕ close
+              </button>
+            </div>
           </div>
-          <div className="p-5 prose prose-invert prose-sm max-w-none
-            prose-headings:text-gray-200 prose-headings:font-semibold
-            prose-p:text-gray-400 prose-p:leading-relaxed
-            prose-strong:text-gray-300
-            prose-li:text-gray-400
-            prose-hr:border-gray-800
-            prose-table:text-gray-400 prose-th:text-gray-300 prose-td:border-gray-800
-            prose-code:text-gray-300 prose-code:bg-gray-900 prose-code:px-1 prose-code:rounded
-          ">
-            <ReactMarkdown>{openFile.content}</ReactMarkdown>
+          <div className="p-5">
+            <FileViewer filename={openFile.filename} content={openFile.content} />
           </div>
         </div>
       )}
@@ -398,16 +441,10 @@ export default function ThinkView() {
       {/* — Checkpoint — */}
       {checkpoint && (
         <div className="border border-gray-800 rounded-lg p-5">
-          <div className="prose prose-invert prose-sm max-w-none
-            prose-headings:text-gray-200 prose-headings:font-semibold
-            prose-p:text-gray-400 prose-p:leading-relaxed
-            prose-strong:text-gray-300
-            prose-li:text-gray-400
-            prose-hr:border-gray-800
-            prose-code:text-gray-300 prose-code:bg-gray-900 prose-code:px-1 prose-code:rounded
-          ">
-            <ReactMarkdown>{checkpoint}</ReactMarkdown>
+          <div className="flex items-center justify-end mb-3">
+            <CopyButton text={checkpoint} />
           </div>
+          <MarkdownContent content={checkpoint} />
         </div>
       )}
 
