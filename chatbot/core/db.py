@@ -69,5 +69,13 @@ def init_db(db_path: str = DB_PATH):
                 success     INTEGER NOT NULL,
                 created_at  TEXT DEFAULT CURRENT_TIMESTAMP
             );
+
+            CREATE TABLE IF NOT EXISTS surfaced (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                topic          TEXT NOT NULL,
+                source_signals TEXT NOT NULL DEFAULT '["obsidian","git"]',
+                engaged        INTEGER NOT NULL DEFAULT 0,
+                created_at     TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
         """)
         conn.commit()

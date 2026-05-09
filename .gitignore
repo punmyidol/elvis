@@ -26,3 +26,4 @@ tables/
 runs/
 documents/
 outputs/
+.staging/

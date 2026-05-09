@@ -141,4 +141,19 @@ def create_scheduler(db_path: str = None) -> BackgroundScheduler:
         replace_existing=True,
     )
 
+    # Daily engagement check at 02:00
+    def _engagement_check():
+        from core.engagement import run_engagement_checker
+        from core.config import DB_PATH as _DB
+        run_engagement_checker(db_path or _DB)
+
+    scheduler.add_job(
+        func=_engagement_check,
+        trigger=CronTrigger(hour=2, minute=0),
+        id="engagement_checker",
+        name="Daily engagement checker",
+        replace_existing=True,
+        misfire_grace_time=300,
+    )
+
     return scheduler
