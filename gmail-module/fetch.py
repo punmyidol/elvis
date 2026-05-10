@@ -2,7 +2,7 @@
 gmail-module/fetch.py
 
 Fetch the first N emails from Gmail inbox, embed, and store in elvis.db
-via the unified vec_items/vec_metadata tables.
+via the unified events/embeddings/vec_index tables.
 
 Usage:
     cd gmail-module
@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../chatbot"))
 
 from auth import get_gmail_service
 from config import INBOX_MAX
-from agent.vector_store import upsert_vector, SourceType
+from agent.vector_store import ingest_event, embed_pending, SourceType
 from core.config import DB_PATH
 
 
@@ -62,16 +62,27 @@ def _parse_date(raw_date: str) -> str:
 
 
 def _clear_emails(db_path: str = DB_PATH):
-    """Delete all stored email vectors from the unified table before re-ingesting."""
+    """Delete all stored email events before re-ingesting."""
     with sqlite3.connect(db_path) as conn:
+        result = conn.execute(
+            "SELECT COUNT(*) FROM events WHERE source = 'email'"
+        ).fetchone()
+        count = result[0] if result else 0
+
+        # Delete embeddings and vec_index rows first (no FK cascade in SQLite by default)
         rows = conn.execute(
-            "SELECT rowid FROM vec_metadata WHERE source_type = 'email'"
+            "SELECT id FROM events WHERE source = 'email'"
         ).fetchall()
-        for (rowid,) in rows:
-            conn.execute("DELETE FROM vec_items WHERE rowid = ?", (rowid,))
-        conn.execute("DELETE FROM vec_metadata WHERE source_type = 'email'")
+        for (event_id,) in rows:
+            em_rows = conn.execute(
+                "SELECT id FROM embeddings WHERE event_id = ?", (event_id,)
+            ).fetchall()
+            for (em_id,) in em_rows:
+                conn.execute("DELETE FROM vec_index WHERE rowid = ?", (em_id,))
+            conn.execute("DELETE FROM embeddings WHERE event_id = ?", (event_id,))
+        conn.execute("DELETE FROM events WHERE source = 'email'")
         conn.commit()
-    print(f"[fetch] Cleared {len(rows)} existing email vector(s).")
+    print(f"[fetch] Cleared {count} existing email event(s).")
 
 
 def fetch_inbox(max_results: int = INBOX_MAX) -> list:
@@ -129,26 +140,28 @@ def main():
     print(f"\nFetching {args.count} emails from inbox...")
     emails = fetch_inbox(max_results=args.count)
 
-    print("\nClearing old email vectors...")
+    print("\nClearing old email events...")
     _clear_emails()
 
-    print(f"\nEmbedding and storing {len(emails)} emails to {DB_PATH}...")
+    print(f"\nIngesting {len(emails)} emails into events table...")
     ok = 0
     for e in emails:
-        embed_content = f"Subject: {e['subject']}\nFrom: {e['sender']}\n\n{e['body'] or e['snippet']}"
-        content_date  = _parse_date(e["date"])
-        n = upsert_vector(
-            source_id=f"email/{e['msg_id']}",
-            source_type=SourceType.EMAIL,
-            content=embed_content,
+        content = f"Subject: {e['subject']}\nFrom: {e['sender']}\n\n{e['body'] or e['snippet']}"
+        inserted = ingest_event(
+            source="email",
+            source_ref=f"email/{e['msg_id']}",
+            content=content,
             title=e["subject"],
             author=e["sender"],
-            content_date=content_date,
+            timestamp=_parse_date(e["date"]),
         )
-        if n:
+        if inserted:
             ok += 1
 
-    print(f"\nDone. {ok}/{len(emails)} emails stored successfully.")
+    print(f"\nEmbedding {ok} new email(s)...")
+    stored = embed_pending(source="email")
+
+    print(f"\nDone. {stored}/{len(emails)} emails embedded successfully.")
 
 
 if __name__ == "__main__":

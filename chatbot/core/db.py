@@ -13,7 +13,6 @@ DEFAULT_TOPICS = [
 def init_db(db_path: str = DB_PATH):
     from agent.vector_store import init_vector_table
     from services.obsidian import init_obsidian_tables
-    from agent.memory import init_memory_tables
 
     # Migration: drop old member-scoped tables and outdated schemas
     with sqlite3.connect(db_path) as conn:
@@ -22,12 +21,13 @@ def init_db(db_path: str = DB_PATH):
             DROP TABLE IF EXISTS shared_memories;
             DROP TABLE IF EXISTS news_cache;
             DROP TABLE IF EXISTS calendar_cache;
+            DROP TABLE IF EXISTS memory;
+            DROP TABLE IF EXISTS memory_vec_items;
         """)
         conn.commit()
 
     init_vector_table(db_path)
     init_obsidian_tables(db_path)
-    init_memory_tables(db_path)
 
     from services.thinking import init_thinking_tables
     init_thinking_tables(db_path)
@@ -71,11 +71,19 @@ def init_db(db_path: str = DB_PATH):
             );
 
             CREATE TABLE IF NOT EXISTS surfaced (
-                id             INTEGER PRIMARY KEY AUTOINCREMENT,
-                topic          TEXT NOT NULL,
-                source_signals TEXT NOT NULL DEFAULT '["obsidian","git"]',
-                engaged        INTEGER NOT NULL DEFAULT 0,
-                created_at     TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+                topic              TEXT NOT NULL,
+                source_signals     TEXT NOT NULL DEFAULT '[]',
+                reason             TEXT,
+                obsidian_note_path TEXT,
+                engaged            INTEGER NOT NULL DEFAULT 0,
+                created_at         TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
         """)
+        # Migration: add new surfaced columns if upgrading from old schema
+        existing = {row[1] for row in conn.execute("PRAGMA table_info(surfaced)").fetchall()}
+        if "reason" not in existing:
+            conn.execute("ALTER TABLE surfaced ADD COLUMN reason TEXT")
+        if "obsidian_note_path" not in existing:
+            conn.execute("ALTER TABLE surfaced ADD COLUMN obsidian_note_path TEXT")
         conn.commit()

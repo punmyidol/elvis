@@ -1,15 +1,20 @@
 """
 obsidian-module/rag/vector.py
 
-Obsidian-specific vector layer for Elvis RAG.
-Tables: obsidian_vec_items / obsidian_vec_metadata  (semantic chunks)
-        vault_index_meta                             (incremental-index tracking)
+Obsidian vector layer — stores chunks in the shared events/embeddings/vec_index
+tables (same elvis.db used by the main chatbot).
+
+Tables used (created by chatbot/agent/vector_store.py):
+  events        — one row per chunk (source='obsidian', source_ref='{path}::chunk_N')
+  embeddings    — embedding metadata (level='raw'), rowid shared with vec_index
+  vec_index     — sqlite-vec vec0 virtual table (768-dim KNN)
+  vault_index_meta — file hash tracking for incremental reindex (own table)
 
 Embedding: nomic-embed-text via Ollama (768-dim)
 DB: chatbot/elvis.db (path via ELVIS_DB_PATH env var)
 """
 
-import json
+import json as _json
 import os
 import sqlite3
 import struct
@@ -77,18 +82,8 @@ def _conn(db_path: str) -> sqlite3.Connection:
 
 def init_obsidian_tables(db_path: str = _DEFAULT_DB) -> None:
     with _conn(db_path) as conn:
-        conn.executescript(f"""
-            CREATE VIRTUAL TABLE IF NOT EXISTS obsidian_vec_items USING vec0(
-                embedding float[{VECTOR_DIM}]
-            );
-            CREATE TABLE IF NOT EXISTS obsidian_vec_metadata (
-                rowid     INTEGER PRIMARY KEY,
-                source_id TEXT NOT NULL,
-                note_path TEXT NOT NULL,
-                title     TEXT NOT NULL DEFAULT '',
-                tags      TEXT NOT NULL DEFAULT '[]',
-                content   TEXT NOT NULL
-            );
+        # vault_index_meta tracks file hashes for incremental reindex
+        conn.executescript("""
             CREATE TABLE IF NOT EXISTS vault_index_meta (
                 filepath     TEXT PRIMARY KEY,
                 content_hash TEXT NOT NULL,
@@ -96,6 +91,9 @@ def init_obsidian_tables(db_path: str = _DEFAULT_DB) -> None:
                 indexed_at   REAL NOT NULL
             );
         """)
+        # Drop old obsidian-specific vector tables (replaced by shared events/embeddings)
+        conn.execute("DROP TABLE IF EXISTS obsidian_vec_items")
+        conn.execute("DROP TABLE IF EXISTS obsidian_vec_metadata")
         conn.commit()
     print(f"[ObsidianVec] Tables ready (dim={VECTOR_DIM})")
 
@@ -111,55 +109,84 @@ def upsert_obsidian_chunks(
     chunks: list[str],
     db_path: str = _DEFAULT_DB,
 ) -> int:
-    tags_json = json.dumps(tags)
-    stored = 0
+    meta = _json.dumps({"tags": tags})
+
+    # Phase 1: embed all chunks outside DB lock
+    embedded = []
+    for i, chunk in enumerate(chunks):
+        source_ref = f"{note_path}::chunk_{i}"
+        try:
+            vector = _embed(chunk)
+        except Exception as e:
+            print(f"[ObsidianVec] Embed failed for {source_ref!r}: {e}")
+            continue
+        embedded.append((source_ref, chunk, _pack(vector)))
+
+    if not embedded:
+        return 0
+
+    # Phase 2: delete stale chunks + insert new batch
     with _conn(db_path) as conn:
-        for i, chunk in enumerate(chunks):
-            source_id = f"{note_path}::chunk_{i}"
-            try:
-                vector = _embed(chunk)
-            except Exception as e:
-                print(f"[ObsidianVec] Embed failed for {source_id!r}: {e}")
-                continue
-            packed = _pack(vector)
-            row = conn.execute(
-                "SELECT rowid FROM obsidian_vec_metadata WHERE source_id=?", (source_id,)
-            ).fetchone()
-            if row:
-                rowid = row[0]
-                conn.execute(
-                    "UPDATE obsidian_vec_metadata SET content=?, title=?, tags=?, note_path=? WHERE rowid=?",
-                    (chunk, title, tags_json, note_path, rowid),
-                )
-                conn.execute("DELETE FROM obsidian_vec_items WHERE rowid=?", (rowid,))
-                conn.execute(
-                    "INSERT INTO obsidian_vec_items(rowid, embedding) VALUES (?, ?)",
-                    (rowid, packed),
-                )
-            else:
-                cursor = conn.execute(
-                    "INSERT INTO obsidian_vec_metadata (source_id, note_path, title, tags, content) VALUES (?,?,?,?,?)",
-                    (source_id, note_path, title, tags_json, chunk),
-                )
-                conn.execute(
-                    "INSERT INTO obsidian_vec_items(rowid, embedding) VALUES (?, ?)",
-                    (cursor.lastrowid, packed),
-                )
+        old_events = conn.execute(
+            "SELECT id FROM events WHERE source = 'obsidian' AND source_ref LIKE ?",
+            (note_path + "::%",),
+        ).fetchall()
+        for (event_id,) in old_events:
+            em_rows = conn.execute(
+                "SELECT id FROM embeddings WHERE event_id = ?", (event_id,)
+            ).fetchall()
+            for (em_id,) in em_rows:
+                conn.execute("DELETE FROM vec_index WHERE rowid = ?", (em_id,))
+            conn.execute("DELETE FROM embeddings WHERE event_id = ?", (event_id,))
+        conn.execute(
+            "DELETE FROM events WHERE source = 'obsidian' AND source_ref LIKE ?",
+            (note_path + "::%",),
+        )
+
+        stored = 0
+        for source_ref, chunk, packed in embedded:
+            cur = conn.execute(
+                "INSERT INTO events"
+                " (source, source_ref, content, title, meta, timestamp, embedded)"
+                " VALUES ('obsidian', ?, ?, ?, ?, datetime('now'), 1)",
+                (source_ref, chunk, title, meta),
+            )
+            event_id = cur.lastrowid
+            em_cur = conn.execute(
+                "INSERT INTO embeddings (event_id, source, level, summary)"
+                " VALUES (?, 'obsidian', 'raw', ?)",
+                (event_id, chunk),
+            )
+            conn.execute(
+                "INSERT INTO vec_index(rowid, embedding) VALUES (?, ?)",
+                (em_cur.lastrowid, packed),
+            )
             stored += 1
+
         conn.commit()
+
     return stored
 
 
 def delete_obsidian_vectors(note_path: str, db_path: str = _DEFAULT_DB) -> int:
     with _conn(db_path) as conn:
-        rows = conn.execute(
-            "SELECT rowid FROM obsidian_vec_metadata WHERE note_path=?", (note_path,)
+        event_rows = conn.execute(
+            "SELECT id FROM events WHERE source = 'obsidian' AND source_ref LIKE ?",
+            (note_path + "::%",),
         ).fetchall()
-        for (rowid,) in rows:
-            conn.execute("DELETE FROM obsidian_vec_items WHERE rowid=?", (rowid,))
-        conn.execute("DELETE FROM obsidian_vec_metadata WHERE note_path=?", (note_path,))
+        for (event_id,) in event_rows:
+            em_rows = conn.execute(
+                "SELECT id FROM embeddings WHERE event_id = ?", (event_id,)
+            ).fetchall()
+            for (em_id,) in em_rows:
+                conn.execute("DELETE FROM vec_index WHERE rowid = ?", (em_id,))
+            conn.execute("DELETE FROM embeddings WHERE event_id = ?", (event_id,))
+        conn.execute(
+            "DELETE FROM events WHERE source = 'obsidian' AND source_ref LIKE ?",
+            (note_path + "::%",),
+        )
         conn.commit()
-    return len(rows)
+    return len(event_rows)
 
 
 # ---------------------------------------------------------------------------
@@ -180,23 +207,32 @@ def search_obsidian_vectors(
     packed = _pack(vector)
     with _conn(db_path) as conn:
         rows = conn.execute("""
-            SELECT m.note_path, m.title, m.tags, m.content, v.distance
-            FROM obsidian_vec_items v
-            JOIN obsidian_vec_metadata m ON v.rowid = m.rowid
+            SELECT e.source_ref, e.title, e.meta, em.summary, v.distance
+            FROM vec_index v
+            JOIN embeddings em ON v.rowid = em.id
+            JOIN events e ON em.event_id = e.id
             WHERE v.embedding MATCH ?
               AND k = ?
+              AND e.source = 'obsidian'
+              AND em.level = 'raw'
             ORDER BY v.distance
         """, (packed, top_k * 4)).fetchall()
 
     results = []
-    seen_paths: dict[str, float] = {}
-    for note_path, title, tags_json, content, dist in rows:
+    for source_ref, title, meta_json, content, dist in rows:
         if dist > DISTANCE_THRESHOLD:
             continue
+        note_path = source_ref.split("::chunk_")[0]
+        tags = []
+        if meta_json:
+            try:
+                tags = _json.loads(meta_json).get("tags", [])
+            except Exception:
+                pass
         results.append({
             "note_path": note_path,
             "title": title,
-            "tags": json.loads(tags_json) if tags_json else [],
+            "tags": tags,
             "content": content,
             "distance": dist,
         })

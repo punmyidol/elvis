@@ -47,20 +47,33 @@ def _check_obsidian(keywords: list[str], after: datetime, db_path: str) -> bool:
     vault_prefix = _VAULT_ROOT.rstrip("/") + "/"
     try:
         with sqlite3.connect(db_path) as conn:
-            # vault_index_meta uses absolute paths; obsidian_vec_metadata uses relative
+            # vault_index_meta uses absolute paths; events.source_ref uses relative note_path
             rows = conn.execute(
                 """
-                SELECT m.title, m.tags, m.content
-                FROM obsidian_vec_metadata m
-                JOIN vault_index_meta v ON v.filepath = ? || m.note_path
-                WHERE v.modified_at > ?
+                SELECT e.title, e.meta, e.content
+                FROM events e
+                JOIN vault_index_meta v
+                  ON v.filepath = ? || CASE
+                      WHEN instr(e.source_ref, '::chunk_') > 0
+                      THEN substr(e.source_ref, 1, instr(e.source_ref, '::chunk_') - 1)
+                      ELSE e.source_ref
+                  END
+                WHERE e.source = 'obsidian'
+                  AND v.modified_at > ?
                 """,
                 (vault_prefix, after_ts),
             ).fetchall()
     except sqlite3.OperationalError:
         return False
-    for title, tags, content in rows:
-        text = f"{title} {tags} {content}".lower()
+    import json as _json
+    for title, meta_json, content in rows:
+        tags = ""
+        if meta_json:
+            try:
+                tags = " ".join(_json.loads(meta_json).get("tags", []))
+            except Exception:
+                pass
+        text = f"{title or ''} {tags} {content or ''}".lower()
         if any(kw in text for kw in keywords):
             return True
     return False

@@ -1,16 +1,15 @@
 """
-elvis/vector_store.py
+vector_store.py — Elvis RAG vector store.
 
-SQLite-vec powered vector store for Elvis RAG.
+Unified tables (EMAIL, OBSIDIAN, GIT, CALENDAR, TODO, GOODNOTES):
+  events     — raw ingested data (source_ref UNIQUE for dedup, embedded flag)
+  embeddings — multi-level vectors (raw/weekly/monthly), rowid shared with vec_index
+  vec_index  — sqlite-vec vec0 virtual table (768-dim KNN)
 
-Per-type tables (legacy, still used for DOC/NEWS/CADQUERY_DOCS):
-  doc_vec_items  / doc_vec_metadata
+Per-type tables (DOC, NEWS, CADQUERY_DOCS — unchanged):
+  doc_vec_items / doc_vec_metadata
   news_vec_items / news_vec_metadata
   cadquery_docs_items / cadquery_docs_metadata
-
-Unified tables (EMAIL and future types):
-  vec_items    — sqlite-vec virtual table (768-dim embeddings)
-  vec_metadata — source_id, source_type, member_id, content, title, author, created_at
 
 Embedding: nomic-embed-text via Ollama (768-dim)
 """
@@ -19,7 +18,7 @@ import sqlite3
 import struct
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import List, Tuple, Optional
+from typing import List, Optional, Tuple
 
 import ollama
 import sqlite_vec
@@ -28,27 +27,28 @@ from core.config import DB_PATH, OLLAMA_BASE_URL, EMBED_MODEL, VECTOR_TOP_K
 
 
 class SourceType(str, Enum):
-    DOC           = "doc"
     EMAIL         = "email"
-    MEMORY        = "memory"
-    NEWS          = "news"
     OBSIDIAN      = "obsidian"
+    GIT           = "git"
+    CALENDAR      = "calendar"
+    TODO          = "todo"
+    GOODNOTES     = "goodnotes"
+    DOC           = "doc"
+    NEWS          = "news"
     CADQUERY_DOCS = "cadquery_docs"
 
 
-# Types stored in the unified vec_items/vec_metadata tables
-UNIFIED_TYPES = {SourceType.EMAIL}
-
-# Types that are auto-chunked; stale chunks are pre-deleted before re-index
-CHUNKED_TYPES = {SourceType.DOC, SourceType.OBSIDIAN}
+UNIFIED_SOURCES = {
+    SourceType.EMAIL, SourceType.OBSIDIAN, SourceType.GIT,
+    SourceType.CALENDAR, SourceType.TODO, SourceType.GOODNOTES,
+}
 
 VECTOR_DIM = 768
-CHUNK_SIZE = 400    # words per chunk
-CHUNK_OVERLAP = 50  # word overlap between chunks
-
-RECENCY_DAYS  = 7    # inject everything inside this window
-HISTORY_TOP_K = 8    # KNN results from outside the window
-MAX_RECENT    = 20   # hard cap — prevents context flood from active vaults
+CHUNK_SIZE = 400
+CHUNK_OVERLAP = 50
+RECENCY_DAYS = 7
+HISTORY_TOP_K = 8
+MAX_RECENT = 20
 
 
 # ---------------------------------------------------------------------------
@@ -74,7 +74,7 @@ def _chunk_text(text: str) -> List[str]:
 # ---------------------------------------------------------------------------
 
 def init_vector_table(db_path: str = DB_PATH):
-    """Create per-type and unified vector tables if they don't exist."""
+    """Create all vector tables. Migrates old vec_metadata rows to events if present."""
     with sqlite3.connect(db_path) as conn:
         conn.enable_load_extension(True)
         sqlite_vec.load(conn)
@@ -119,28 +119,55 @@ def init_vector_table(db_path: str = DB_PATH):
             );
         """)
 
-        # Unified tables (EMAIL and future types)
+        # Unified tables
         conn.executescript(f"""
-            CREATE VIRTUAL TABLE IF NOT EXISTS vec_items USING vec0(
-                embedding float[{VECTOR_DIM}]
+            CREATE TABLE IF NOT EXISTS events (
+                id         INTEGER PRIMARY KEY,
+                source     TEXT NOT NULL,
+                source_ref TEXT UNIQUE,
+                content    TEXT,
+                title      TEXT,
+                author     TEXT,
+                meta       TEXT,
+                timestamp  TEXT,
+                embedded   INTEGER DEFAULT 0
             );
-            CREATE TABLE IF NOT EXISTS vec_metadata (
-                rowid       INTEGER PRIMARY KEY,
-                source_id   TEXT NOT NULL UNIQUE,
-                source_type TEXT NOT NULL,
-                member_id   TEXT NOT NULL DEFAULT 'shared',
-                content     TEXT NOT NULL,
-                title       TEXT,
-                author      TEXT,
-                created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+
+            CREATE TABLE IF NOT EXISTS embeddings (
+                id         INTEGER PRIMARY KEY,
+                event_id   INTEGER REFERENCES events(id),
+                source     TEXT NOT NULL,
+                level      TEXT NOT NULL DEFAULT 'raw',
+                period     TEXT,
+                summary    TEXT NOT NULL,
+                created_at TEXT DEFAULT (datetime('now'))
+            );
+
+            CREATE VIRTUAL TABLE IF NOT EXISTS vec_index USING vec0(
+                embedding float[{VECTOR_DIM}]
             );
         """)
 
-        # Migration: drop old standalone email tables
+        # Migration: move old vec_metadata rows into events (embedded=0, re-embed on next run)
+        existing = {r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type IN ('table','shadow')"
+        ).fetchall()}
+        if "vec_metadata" in existing:
+            conn.execute("""
+                INSERT OR IGNORE INTO events
+                    (source, source_ref, content, title, author, timestamp, embedded)
+                SELECT source_type, source_id, content, title, author, created_at, 0
+                FROM vec_metadata
+            """)
+            conn.execute("DROP TABLE IF EXISTS vec_items")
+            conn.execute("DROP TABLE IF EXISTS vec_metadata")
+            conn.commit()
+            print("[VectorStore] Migrated vec_metadata → events (embedded=0, re-embed required)")
+
         conn.execute("DROP TABLE IF EXISTS email_vec_items")
         conn.execute("DROP TABLE IF EXISTS email_vec_metadata")
-
         conn.commit()
+
     print(f"[VectorStore] Initialised vector tables (dim={VECTOR_DIM})")
 
 
@@ -159,14 +186,14 @@ def _pack(vector: List[float]) -> bytes:
 
 
 def _tables(source_type: SourceType) -> Tuple[str, str]:
-    """Return (vec_table, meta_table) for per-type source types only."""
+    """Return (vec_table, meta_table) for per-type sources only."""
     if source_type == SourceType.DOC:
         return "doc_vec_items", "doc_vec_metadata"
     if source_type == SourceType.NEWS:
         return "news_vec_items", "news_vec_metadata"
     if source_type == SourceType.CADQUERY_DOCS:
         return "cadquery_docs_items", "cadquery_docs_metadata"
-    raise ValueError(f"No dedicated per-type table for source_type: {source_type!r}")
+    raise ValueError(f"No per-type table for: {source_type!r}")
 
 
 def _upsert_one(conn, vec_table: str, meta_table: str, uid: str, content: str, packed: bytes):
@@ -178,126 +205,136 @@ def _upsert_one(conn, vec_table: str, meta_table: str, uid: str, content: str, p
         conn.execute(f"INSERT INTO {vec_table}(rowid, embedding) VALUES (?, ?)", (rowid, packed))
     else:
         cursor = conn.execute(
-            f"INSERT INTO {meta_table} (source_id, content) VALUES (?, ?)",
-            (uid, content),
+            f"INSERT INTO {meta_table} (source_id, content) VALUES (?, ?)", (uid, content)
         )
         conn.execute(f"INSERT INTO {vec_table}(rowid, embedding) VALUES (?, ?)", (cursor.lastrowid, packed))
 
 
-def _upsert_unified(
-    conn,
-    source_id: str,
-    source_type: "SourceType",
-    member_id: str,
+# ---------------------------------------------------------------------------
+# Write — unified sources
+# ---------------------------------------------------------------------------
+
+def ingest_event(
+    source: str,
+    source_ref: str,
     content: str,
-    packed: bytes,
     title: Optional[str] = None,
     author: Optional[str] = None,
-    content_date: Optional[str] = None,
-):
-    created_at = content_date or datetime.now().isoformat()
-    row = conn.execute("SELECT rowid FROM vec_metadata WHERE source_id=?", (source_id,)).fetchone()
-    if row:
-        rowid = row[0]
-        conn.execute(
-            "UPDATE vec_metadata SET content=?, title=?, author=?, created_at=? WHERE rowid=?",
-            (content, title, author, created_at, rowid),
-        )
-        conn.execute("DELETE FROM vec_items WHERE rowid=?", (rowid,))
-        conn.execute("INSERT INTO vec_items(rowid, embedding) VALUES (?, ?)", (rowid, packed))
-    else:
+    timestamp: Optional[str] = None,
+    meta: Optional[str] = None,
+    db_path: str = DB_PATH,
+) -> bool:
+    """
+    Insert a new event if source_ref is not already present.
+    Returns True if inserted, False if already existed (dedup).
+    Does not embed — call embed_pending() afterwards.
+    """
+    ts = timestamp or datetime.now().isoformat()
+    with sqlite3.connect(db_path) as conn:
         cur = conn.execute(
-            "INSERT INTO vec_metadata"
-            " (source_id, source_type, member_id, content, title, author, created_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (source_id, source_type.value, member_id, content, title, author, created_at),
+            "INSERT OR IGNORE INTO events"
+            " (source, source_ref, content, title, author, timestamp, meta, embedded)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, 0)",
+            (source, source_ref, content, title, author, ts, meta),
         )
-        conn.execute(
-            "INSERT INTO vec_items(rowid, embedding) VALUES (?, ?)",
-            (cur.lastrowid, packed),
-        )
+        conn.commit()
+    return cur.lastrowid != 0
 
 
-def _delete_chunks(conn, base_source_id: str):
-    """Delete all vec_items + vec_metadata rows for a base source_id (unified tables)."""
-    rows = conn.execute(
-        "SELECT rowid FROM vec_metadata WHERE source_id LIKE ?",
-        (base_source_id + "::%",),
-    ).fetchall()
-    for (rowid,) in rows:
-        conn.execute("DELETE FROM vec_items WHERE rowid = ?", (rowid,))
-    conn.execute(
-        "DELETE FROM vec_metadata WHERE source_id LIKE ?",
-        (base_source_id + "::%",),
-    )
-    if rows:
-        print(f"[VectorStore] Deleted {len(rows)} stale chunk(s) for '{base_source_id}'")
+def embed_pending(source: Optional[str] = None, db_path: str = DB_PATH) -> int:
+    """
+    Embed all events with embedded=0, optionally filtered by source.
+    Phase 1: fetch + embed outside DB lock (Ollama calls).
+    Phase 2: short-lived connection to insert embeddings and flip flag.
+    Returns number of embeddings created.
+    """
+    sql = "SELECT id, source, content FROM events WHERE embedded = 0"
+    params: list = []
+    if source:
+        sql += " AND source = ?"
+        params.append(source)
+
+    with sqlite3.connect(db_path) as conn:
+        rows = conn.execute(sql, params).fetchall()
+
+    if not rows:
+        return 0
+
+    packed_rows = []
+    for event_id, src, content in rows:
+        try:
+            vector = embed_text(content or "")
+            packed_rows.append((event_id, src, content, _pack(vector)))
+        except Exception as e:
+            print(f"[VectorStore] Embed failed for event {event_id}: {e}")
+
+    if not packed_rows:
+        return 0
+
+    with sqlite3.connect(db_path) as conn:
+        conn.enable_load_extension(True)
+        sqlite_vec.load(conn)
+        conn.enable_load_extension(False)
+
+        for event_id, src, content, packed in packed_rows:
+            em_cur = conn.execute(
+                "INSERT INTO embeddings (event_id, source, level, summary) VALUES (?, ?, 'raw', ?)",
+                (event_id, src, content),
+            )
+            conn.execute(
+                "INSERT INTO vec_index(rowid, embedding) VALUES (?, ?)",
+                (em_cur.lastrowid, packed),
+            )
+            conn.execute("UPDATE events SET embedded = 1 WHERE id = ?", (event_id,))
+
+        conn.commit()
+
+    print(f"[VectorStore] Embedded {len(packed_rows)}/{len(rows)} pending event(s)")
+    return len(packed_rows)
 
 
 # ---------------------------------------------------------------------------
-# Write
+# Write — per-type sources (DOC, NEWS, CADQUERY_DOCS)
 # ---------------------------------------------------------------------------
 
 def upsert_vector(
     source_id: str,
     source_type: SourceType,
     content: str,
-    member_id: str = "shared",
+    member_id: str = "shared",  # unused, kept for backward compat
     content_date: Optional[str] = None,
     db_path: str = DB_PATH,
     **kwargs,
 ) -> int:
     """
-    Embed and store content.
-    Phase 1: embed all chunks outside the DB connection (no lock held during Ollama calls).
-    Phase 2: open one short-lived connection — delete stale chunks, insert new batch.
-
-    - CHUNKED (DOC, OBSIDIAN) → auto-chunked; stale chunks pre-deleted before insert
-    - UNIFIED (EMAIL) → unified vec_items/vec_metadata
-    - Per-type (NEWS, CADQUERY_DOCS) → dedicated tables, single vector
+    Embed and store content for per-type sources (DOC, NEWS, CADQUERY_DOCS).
+    For unified sources use ingest_event() + embed_pending() instead.
     Returns number of vectors upserted.
     """
-    source_type = SourceType(source_type)  # raises ValueError on unknown strings
-    is_unified = source_type in UNIFIED_TYPES
-    is_chunked = source_type in CHUNKED_TYPES
-    chunks = _chunk_text(content) if is_chunked else [content]
-    uids = [f"{source_id}::chunk_{i}" for i in range(len(chunks))] if is_chunked else [source_id]
+    source_type = SourceType(source_type)
+    if source_type in UNIFIED_SOURCES:
+        raise ValueError(
+            f"Use ingest_event() + embed_pending() for {source_type.value!r}, not upsert_vector()"
+        )
 
-    # Phase 1: embed all chunks — outside the DB connection
-    packed_chunks = []
-    for uid, chunk in zip(uids, chunks):
-        try:
-            vector = embed_text(chunk)
-            packed_chunks.append((uid, chunk, _pack(vector)))
-        except Exception as e:
-            print(f"[VectorStore] Embedding failed for '{uid}': {e}")
-
-    if not packed_chunks:
+    try:
+        vector = embed_text(content)
+    except Exception as e:
+        print(f"[VectorStore] Embedding failed for '{source_id}': {e}")
         return 0
 
-    # Phase 2: open connection, delete stale, insert new — as short as possible
+    packed = _pack(vector)
+    vec_table, meta_table = _tables(source_type)
+
     with sqlite3.connect(db_path) as conn:
         conn.enable_load_extension(True)
         sqlite_vec.load(conn)
         conn.enable_load_extension(False)
-
-        if is_chunked:
-            _delete_chunks(conn, source_id)
-
-        stored = 0
-        for uid, chunk, packed in packed_chunks:
-            if is_unified:
-                _upsert_unified(conn, uid, source_type, member_id, chunk, packed,
-                                content_date=content_date, **kwargs)
-            else:
-                vec_table, meta_table = _tables(source_type)
-                _upsert_one(conn, vec_table, meta_table, uid, chunk, packed)
-            stored += 1
-
+        _upsert_one(conn, vec_table, meta_table, source_id, content, packed)
         conn.commit()
 
-    print(f"[VectorStore] Upserted {stored}/{len(chunks)} chunk(s) for {source_type.value} '{source_id}'")
-    return stored
+    print(f"[VectorStore] Upserted {source_type.value} '{source_id}'")
+    return 1
 
 
 # ---------------------------------------------------------------------------
@@ -308,14 +345,15 @@ def search_similar(
     query: str,
     source_types: List[SourceType],
     top_k: int = VECTOR_TOP_K,
+    level: str = "raw",
     db_path: str = DB_PATH,
 ) -> List[Tuple[str, str, str, float]]:
     """
     KNN search scoped to the given source types.
-    Returns list of (source_id, source_type, content, distance).
+    Returns list of (source_ref, source_type, content, distance).
 
-    - Unified types (EMAIL): queries vec_items/vec_metadata, post-filters by source_type.
-    - Per-type (DOC, NEWS, CADQUERY_DOCS): queries dedicated table (source_types must be length 1).
+    Unified sources (EMAIL, OBSIDIAN, etc.): queries vec_index → embeddings → events.
+    Per-type sources (DOC, NEWS, CADQUERY_DOCS): queries dedicated tables.
     """
     source_types = [SourceType(t) for t in source_types]
 
@@ -326,8 +364,7 @@ def search_similar(
         return []
 
     packed = _pack(vector)
-
-    uses_unified = any(t in UNIFIED_TYPES for t in source_types)
+    uses_unified = any(t in UNIFIED_SOURCES for t in source_types)
 
     with sqlite3.connect(db_path) as conn:
         conn.enable_load_extension(True)
@@ -335,19 +372,21 @@ def search_similar(
         conn.enable_load_extension(False)
 
         if uses_unified:
-            valid = {t.value for t in source_types}
+            valid = {t.value for t in source_types if t in UNIFIED_SOURCES}
             rows = conn.execute("""
-                SELECT m.source_id, m.source_type, m.content, v.distance
-                FROM vec_items v
-                JOIN vec_metadata m ON v.rowid = m.rowid
+                SELECT e.source_ref, e.source, em.summary, v.distance
+                FROM vec_index v
+                JOIN embeddings em ON v.rowid = em.id
+                JOIN events e ON em.event_id = e.id
                 WHERE v.embedding MATCH ?
                   AND k = ?
+                  AND em.level = ?
                 ORDER BY v.distance
-            """, (packed, top_k * 4)).fetchall()
+            """, (packed, top_k * 4, level)).fetchall()
             return [
-                (sid, stype, content, dist)
-                for sid, stype, content, dist in rows
-                if stype in valid
+                (ref, src, content, dist)
+                for ref, src, content, dist in rows
+                if src in valid
             ][:top_k]
         else:
             source_type = source_types[0]
@@ -363,175 +402,103 @@ def search_similar(
             return [(sid, source_type.value, content, dist) for sid, content, dist in rows]
 
 
+def search_by_level(
+    source: str,
+    level: str,
+    period: Optional[str] = None,
+    db_path: str = DB_PATH,
+) -> List[dict]:
+    """Fetch embeddings by level/period without KNN (for weekly/monthly summaries)."""
+    sql = "SELECT id, event_id, period, summary, created_at FROM embeddings WHERE source = ? AND level = ?"
+    params: list = [source, level]
+    if period:
+        sql += " AND period = ?"
+        params.append(period)
+    sql += " ORDER BY created_at DESC"
+    with sqlite3.connect(db_path) as conn:
+        rows = conn.execute(sql, params).fetchall()
+    return [
+        {"id": r[0], "event_id": r[1], "period": r[2], "summary": r[3], "created_at": r[4]}
+        for r in rows
+    ]
+
+
 def get_recent_raw(
     source_types: List[SourceType],
-    member_id: Optional[str] = None,
     days: int = RECENCY_DAYS,
     max_recent: int = MAX_RECENT,
     db_path: str = DB_PATH,
 ) -> List[Tuple[str, str, str, float]]:
     """
-    Return most recent vec_metadata rows within the last N days.
-    No embedding call. Distance set to 0.0 (always relevant by recency).
-    Capped at max_recent rows ordered by created_at DESC.
-    Only queries unified vec_metadata — per-type tables (DOC, NEWS) not included.
+    Return most recent events within the last N days (unified sources only).
+    Distance is set to 0.0 (relevant by recency). Capped at max_recent.
     """
+    valid = [t.value for t in source_types if SourceType(t) in UNIFIED_SOURCES]
+    if not valid:
+        return []
     cutoff = (datetime.now() - timedelta(days=days)).isoformat()
-    type_placeholders = ",".join("?" * len(source_types))
-    params: List = [t.value for t in source_types] + [cutoff]
-    if member_id:
-        params.append(member_id)
-
+    placeholders = ",".join("?" * len(valid))
     with sqlite3.connect(db_path) as conn:
         rows = conn.execute(f"""
-            SELECT source_id, source_type, content
-            FROM vec_metadata
-            WHERE source_type IN ({type_placeholders})
-              AND created_at >= ?
-              {"AND (member_id = ? OR member_id = 'shared')" if member_id else ""}
-            ORDER BY created_at DESC
+            SELECT source_ref, source, content
+            FROM events
+            WHERE source IN ({placeholders})
+              AND timestamp >= ?
+            ORDER BY timestamp DESC
             LIMIT ?
-        """, params + [max_recent]).fetchall()
-
-    return [(sid, stype, content, 0.0) for sid, stype, content in rows]
-
-
-def _knn_search(
-    query: str,
-    source_types: List[SourceType],
-    member_id: Optional[str],
-    top_k: int,
-    exclude_ids: set,
-    created_before: datetime,
-    db_path: str,
-) -> List[Tuple[str, str, str, float]]:
-    """
-    KNN over unified vec_items restricted to content older than created_before.
-    Post-filters source_type, member_id, exclude_ids, and created_at in Python.
-    Over-fetches 10x to compensate for all post-filters on a shared pool.
-    """
-    try:
-        vector = embed_text(query)
-    except Exception as e:
-        print(f"[VectorStore] _knn_search embedding failed: {e}")
-        return []
-
-    packed = _pack(vector)
-    fetch_n = max(top_k * 10, top_k + len(exclude_ids) * 2)
-    cutoff_str = created_before.isoformat()
-    valid_types = {t.value for t in source_types}
-
-    with sqlite3.connect(db_path) as conn:
-        conn.enable_load_extension(True)
-        sqlite_vec.load(conn)
-        conn.enable_load_extension(False)
-
-        rows = conn.execute("""
-            SELECT m.source_id, m.source_type, m.content, m.member_id, m.created_at, v.distance
-            FROM vec_items v
-            JOIN vec_metadata m ON v.rowid = m.rowid
-            WHERE v.embedding MATCH ?
-              AND k = ?
-            ORDER BY v.distance
-        """, (packed, fetch_n)).fetchall()
-
-    results = []
-    for sid, stype, content, mid, created_at, dist in rows:
-        if stype not in valid_types:
-            continue
-        if member_id and mid != member_id and mid != "shared":
-            continue
-        if sid in exclude_ids:
-            continue
-        if created_at and created_at >= cutoff_str:
-            continue
-        results.append((sid, stype, content, dist))
-        if len(results) >= top_k:
-            break
-
-    return results
-
-
-def retrieve_context(
-    query: str,
-    source_types: Optional[List[SourceType]] = None,
-    member_id: Optional[str] = None,
-    recency_days: int = RECENCY_DAYS,
-    history_top_k: int = HISTORY_TOP_K,
-    after: Optional[datetime] = None,
-    db_path: str = DB_PATH,
-) -> List[Tuple[str, str, str, float]]:
-    """
-    Two-path retrieval for proactive/non-query-driven callers only.
-    - recent: most recent rows within recency_days, capped at MAX_RECENT
-    - history: KNN over content older than recency_days (or after, if provided)
-    Returns combined deduplicated list. Recent results appear first.
-
-    `after` shifts the KNN boundary to a specific datetime (used by
-    check_topic_appears() to scope history to pre-surfacing content).
-    Only queries unified vec_metadata — agent tools should use search_similar().
-    """
-    types = source_types or [SourceType.EMAIL]
-    cutoff = after or (datetime.now() - timedelta(days=recency_days))
-
-    recent = get_recent_raw(types, member_id, recency_days, db_path=db_path)
-    recent_ids = {r[0] for r in recent}
-
-    history = _knn_search(
-        query=query,
-        source_types=types,
-        member_id=member_id,
-        top_k=history_top_k,
-        exclude_ids=recent_ids,
-        created_before=cutoff,
-        db_path=db_path,
-    )
-
-    return recent + history
+        """, [*valid, cutoff, max_recent]).fetchall()
+    return [(ref, src, content, 0.0) for ref, src, content in rows]
 
 
 # ---------------------------------------------------------------------------
 # Delete
 # ---------------------------------------------------------------------------
 
-def delete_vector(source_id: str, source_type: SourceType, db_path: str = DB_PATH):
+def delete_vector(source_ref: str, source_type: SourceType, db_path: str = DB_PATH):
     """Remove a vector (or all chunks for a document) and its metadata."""
-    source_type = SourceType(source_type)  # raises ValueError on unknown strings
+    source_type = SourceType(source_type)
 
     with sqlite3.connect(db_path) as conn:
         conn.enable_load_extension(True)
         sqlite_vec.load(conn)
         conn.enable_load_extension(False)
 
-        if source_type in UNIFIED_TYPES:
-            row = conn.execute(
-                "SELECT rowid FROM vec_metadata WHERE source_id=?", (source_id,)
-            ).fetchone()
-            if row:
-                conn.execute("DELETE FROM vec_items WHERE rowid=?", (row[0],))
-                conn.execute("DELETE FROM vec_metadata WHERE source_id=?", (source_id,))
-            rows = [row] if row else []
+        if source_type in UNIFIED_SOURCES:
+            event_rows = conn.execute(
+                "SELECT id FROM events WHERE source_ref = ? OR source_ref LIKE ?",
+                (source_ref, source_ref + "::%"),
+            ).fetchall()
+            for (event_id,) in event_rows:
+                em_rows = conn.execute(
+                    "SELECT id FROM embeddings WHERE event_id = ?", (event_id,)
+                ).fetchall()
+                for (em_id,) in em_rows:
+                    conn.execute("DELETE FROM vec_index WHERE rowid = ?", (em_id,))
+                conn.execute("DELETE FROM embeddings WHERE event_id = ?", (event_id,))
+            conn.execute(
+                "DELETE FROM events WHERE source_ref = ? OR source_ref LIKE ?",
+                (source_ref, source_ref + "::%"),
+            )
         elif source_type == SourceType.DOC:
             vec_table, meta_table = _tables(source_type)
             rows = conn.execute(
                 f"SELECT rowid FROM {meta_table} WHERE source_id LIKE ?",
-                (source_id + "::%",),
+                (source_ref + "::%",),
             ).fetchall()
             for (rowid,) in rows:
                 conn.execute(f"DELETE FROM {vec_table} WHERE rowid=?", (rowid,))
-            conn.execute(f"DELETE FROM {meta_table} WHERE source_id LIKE ?", (source_id + "::%",))
+            conn.execute(f"DELETE FROM {meta_table} WHERE source_id LIKE ?", (source_ref + "::%",))
         else:
             vec_table, meta_table = _tables(source_type)
             row = conn.execute(
-                f"SELECT rowid FROM {meta_table} WHERE source_id=?", (source_id,)
+                f"SELECT rowid FROM {meta_table} WHERE source_id=?", (source_ref,)
             ).fetchone()
             if row:
                 conn.execute(f"DELETE FROM {vec_table} WHERE rowid=?", (row[0],))
-                conn.execute(f"DELETE FROM {meta_table} WHERE source_id=?", (source_id,))
-            rows = [row] if row else []
+                conn.execute(f"DELETE FROM {meta_table} WHERE source_id=?", (source_ref,))
 
         conn.commit()
-        print(f"[VectorStore] Deleted {len(rows)} vector(s) for {source_type.value} '{source_id}'")
+        print(f"[VectorStore] Deleted vector(s) for {source_type.value} '{source_ref}'")
 
 
 # ---------------------------------------------------------------------------
@@ -539,13 +506,16 @@ def delete_vector(source_id: str, source_type: SourceType, db_path: str = DB_PAT
 # ---------------------------------------------------------------------------
 
 def count_vectors(db_path: str = DB_PATH) -> dict:
-    """Return count of vectors per source_type."""
+    """Return count of vectors per source type."""
     result = {}
     with sqlite3.connect(db_path) as conn:
         for stype in (SourceType.DOC, SourceType.NEWS):
             _, meta_table = _tables(stype)
-            result[stype.value] = conn.execute(f"SELECT COUNT(*) FROM {meta_table}").fetchone()[0]
-        result[SourceType.EMAIL.value] = conn.execute(
-            "SELECT COUNT(*) FROM vec_metadata WHERE source_type='email'"
-        ).fetchone()[0]
+            result[stype.value] = conn.execute(
+                f"SELECT COUNT(*) FROM {meta_table}"
+            ).fetchone()[0]
+        for stype in UNIFIED_SOURCES:
+            result[stype.value] = conn.execute(
+                "SELECT COUNT(*) FROM events WHERE source = ?", (stype.value,)
+            ).fetchone()[0]
     return result
