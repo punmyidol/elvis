@@ -49,6 +49,8 @@ def sync_calendar(db_path: str = DB_PATH) -> int:
         return 0
 
     try:
+        from agent.vector_store import ingest_event, embed_pending
+
         _, principal = _get_client()
         calendars = principal.calendars()
 
@@ -56,6 +58,7 @@ def sync_calendar(db_path: str = DB_PATH) -> int:
         end = now + timedelta(days=CALENDAR_LOOKAHEAD_DAYS)
         synced = 0
         now_str = datetime.now().isoformat()
+        ingested: list[tuple[str, str, str, str]] = []  # (uid, title, description, start_iso)
 
         from icalendar import Calendar as ICal
         import datetime as _dt
@@ -99,12 +102,29 @@ def sync_calendar(db_path: str = DB_PATH) -> int:
                                     last_synced=excluded.last_synced
                             """, (uid, title, start_val.isoformat(), end_val.isoformat(), description, cal_id, now_str))
                             synced += 1
+                            ingested.append((uid, title, description, start_val.isoformat()))
                 except Exception as e:
                     print(f"[Calendar] Error reading calendar {cal}: {e}")
 
             conn.commit()
 
-        print(f"[Calendar] Synced {synced} events from iCloud.")
+        # Push into unified events table (dedup via source_ref UNIQUE)
+        new_events = 0
+        for uid, title, description, start_iso in ingested:
+            content = f"{title}\n\n{description}".strip()
+            if ingest_event(
+                source="calendar",
+                source_ref=f"calendar/{uid}",
+                content=content,
+                title=title,
+                timestamp=start_iso,
+                db_path=db_path,
+            ):
+                new_events += 1
+        if new_events:
+            embed_pending(source="calendar", db_path=db_path)
+
+        print(f"[Calendar] Synced {synced} events from iCloud ({new_events} new vectors).")
         return synced
 
     except Exception as e:

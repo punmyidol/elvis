@@ -105,6 +105,13 @@ class VaultIndexer:
         if chunks:
             upsert_obsidian_chunks(rel_path, title, tags, chunks, self.db_path)
 
+        if rel_path == "todolist.md":
+            try:
+                from services.todo_ingest import reindex_todos
+                reindex_todos(self.db_path)
+            except Exception as e:
+                print(f"[Indexer] Todo re-extract failed: {e}")
+
         mtime = Path(filepath).stat().st_mtime if Path(filepath).exists() else time.time()
         self._set_meta(filepath, content_hash, mtime)
         return True
