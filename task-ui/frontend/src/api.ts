@@ -1,4 +1,4 @@
-import type { Run, RunSummary, CadStatusEvent, CadOutput, ThinkEvent, ThinkSessionSummary, ThinkSessionDetail, ThinkFile, ChatThread, ChatMessage, ChatEvent } from './types'
+import type { Run, RunSummary, CadStatusEvent, CadOutput, ThinkEvent, ThinkSessionSummary, ThinkSessionDetail, ThinkFile, ChatThread, ChatMessage, ChatEvent, WeeklySummary } from './types'
 
 const BASE = '/api'
 
@@ -171,6 +171,12 @@ export async function applyThinkToVault(sessionId: string): Promise<{ applied: s
 export async function deleteChatThread(threadId: string): Promise<void> {
   const res = await fetch(`${BASE}/chat/threads/${encodeURIComponent(threadId)}`, { method: 'DELETE' })
   if (!res.ok) throw new Error(await res.text())
+}
+
+export async function fetchWeeklySummaries(): Promise<WeeklySummary[]> {
+  const res = await fetch(`${BASE}/weekly`)
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
 }
 
 export async function* continueThinking(sessionId: string, input: string): AsyncGenerator<ThinkEvent> {

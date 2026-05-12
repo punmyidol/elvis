@@ -141,6 +141,21 @@ def create_scheduler(db_path: str = None) -> BackgroundScheduler:
         replace_existing=True,
     )
 
+    # Git commit ingest every 30 min (idempotent — source_ref UNIQUE dedupes)
+    def _git_reindex():
+        from services.git_ingest import reindex_git
+        from core.config import DB_PATH as _DB
+        n = reindex_git(db_path or _DB)
+        print(f"[Scheduler] Git reindex: {n} new commit(s) embedded")
+
+    scheduler.add_job(
+        func=_git_reindex,
+        trigger=IntervalTrigger(minutes=30),
+        id="git_reindex",
+        name="Local git log ingest",
+        replace_existing=True,
+    )
+
     # Daily engagement check at 02:00
     def _engagement_check():
         from core.engagement import run_engagement_checker
@@ -154,6 +169,22 @@ def create_scheduler(db_path: str = None) -> BackgroundScheduler:
         name="Daily engagement checker",
         replace_existing=True,
         misfire_grace_time=300,
+    )
+
+    # Weekly per-source summarizer — Sunday 23:30
+    def _weekly_summary():
+        from services.weekly_summarizer import run_weekly_summary
+        from core.config import DB_PATH as _DB
+        stats = run_weekly_summary(db_path=db_path or _DB)
+        print(f"[Scheduler] Weekly summaries: {stats}")
+
+    scheduler.add_job(
+        func=_weekly_summary,
+        trigger=CronTrigger(day_of_week="sun", hour=23, minute=30),
+        id="weekly_summary",
+        name="Weekly per-source summarizer",
+        replace_existing=True,
+        misfire_grace_time=3600,
     )
 
     return scheduler

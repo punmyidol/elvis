@@ -102,8 +102,10 @@ class VaultIndexer:
         chunks = _chunk(body)
         delete_obsidian_vectors(rel_path, self.db_path)
 
+        mtime = Path(filepath).stat().st_mtime if Path(filepath).exists() else time.time()
+
         if chunks:
-            upsert_obsidian_chunks(rel_path, title, tags, chunks, self.db_path)
+            upsert_obsidian_chunks(rel_path, title, tags, chunks, self.db_path, mtime=mtime)
 
         if rel_path == "todolist.md":
             try:
@@ -112,7 +114,6 @@ class VaultIndexer:
             except Exception as e:
                 print(f"[Indexer] Todo re-extract failed: {e}")
 
-        mtime = Path(filepath).stat().st_mtime if Path(filepath).exists() else time.time()
         self._set_meta(filepath, content_hash, mtime)
         return True
 

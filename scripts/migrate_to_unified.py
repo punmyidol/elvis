@@ -9,7 +9,8 @@ Steps:
   2. Obsidian full re-index from vault (Ollama required).
   3. Calendar backfill from calendar_cache.
   4. Todo extract from <vault>/todolist.md.
-  5. Gmail fetch (network — requires valid OAuth token).
+  5. Git log ingest from local repos.
+  6. Gmail fetch (network — requires valid OAuth token).
 
 Usage:
     python scripts/migrate_to_unified.py
@@ -89,14 +90,21 @@ def step_calendar() -> None:
 
 
 def step_todo() -> None:
-    print("\n[4/5] Extracting todos from vault/todolist.md...")
+    print("\n[4/6] Extracting todos from vault/todolist.md...")
     from services.todo_ingest import reindex_todos
     n = reindex_todos(DB_PATH)
     print(f"[Todo] Ingested {n} task(s)")
 
 
+def step_git() -> None:
+    print("\n[5/6] Ingesting git log...")
+    from services.git_ingest import reindex_git
+    n = reindex_git(DB_PATH)
+    print(f"[Git] {n} new commit(s) embedded")
+
+
 def step_gmail() -> None:
-    print("\n[5/5] Fetching Gmail inbox...")
+    print("\n[6/6] Fetching Gmail inbox...")
     fetch_script = os.path.join(_REPO, "gmail-module", "fetch.py")
     # Run as subprocess so gmail-module/config.py doesn't collide with the
     # obsidian-module/config.py we already loaded in step_obsidian().
@@ -123,6 +131,7 @@ def main() -> None:
     step_obsidian()
     step_calendar()
     step_todo()
+    step_git()
     if not args.skip_gmail:
         step_gmail()
     print("\nDone.")

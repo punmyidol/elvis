@@ -108,8 +108,11 @@ def upsert_obsidian_chunks(
     tags: list[str],
     chunks: list[str],
     db_path: str = _DEFAULT_DB,
+    mtime: Optional[float] = None,
 ) -> int:
+    from datetime import datetime as _dt
     meta = _json.dumps({"tags": tags})
+    ts_iso = _dt.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S") if mtime else None
 
     # Phase 1: embed all chunks outside DB lock
     embedded = []
@@ -148,8 +151,8 @@ def upsert_obsidian_chunks(
             cur = conn.execute(
                 "INSERT INTO events"
                 " (source, source_ref, content, title, meta, timestamp, embedded)"
-                " VALUES ('obsidian', ?, ?, ?, ?, datetime('now'), 1)",
-                (source_ref, chunk, title, meta),
+                " VALUES ('obsidian', ?, ?, ?, ?, COALESCE(?, datetime('now')), 1)",
+                (source_ref, chunk, title, meta, ts_iso),
             )
             event_id = cur.lastrowid
             em_cur = conn.execute(

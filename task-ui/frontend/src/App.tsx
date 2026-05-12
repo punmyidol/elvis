@@ -5,10 +5,11 @@ import RunDetail from './components/RunDetail'
 import CadView from './components/CadView'
 import ThinkView from './components/ThinkView'
 import ChatView from './components/ChatView'
+import WeeklyView from './components/WeeklyView'
 import { fetchRuns } from './api'
 import type { RunSummary } from './types'
 
-type View = 'tasks' | 'cad' | 'think' | 'chat'
+type View = 'tasks' | 'cad' | 'think' | 'chat' | 'weekly'
 
 interface ActiveRun {
   runId: string
@@ -20,6 +21,7 @@ const NAV_LABELS: Record<View, string> = {
   cad: 'CAD',
   think: 'Think',
   chat: 'Chat',
+  weekly: 'Weekly',
 }
 
 export default function App() {
@@ -49,7 +51,7 @@ export default function App() {
       <header className="border-b border-gray-800 px-6 py-4 flex items-center justify-between">
         <h1 className="text-base font-semibold tracking-tight text-white">Elvis</h1>
         <nav className="flex gap-1">
-          {(['tasks', 'cad', 'think', 'chat'] as View[]).map(v => (
+          {(['tasks', 'cad', 'think', 'chat', 'weekly'] as View[]).map(v => (
             <button
               key={v}
               onClick={() => handleViewChange(v)}
@@ -72,6 +74,8 @@ export default function App() {
           <ThinkView />
         ) : view === 'cad' ? (
           <CadView />
+        ) : view === 'weekly' ? (
+          <WeeklyView />
         ) : active ? (
           <RunDetail
             runId={active.runId}

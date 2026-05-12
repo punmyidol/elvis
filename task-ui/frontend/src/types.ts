@@ -104,3 +104,11 @@ export interface ChatEvent {
   text?: string
   message?: string
 }
+
+export interface WeeklySummary {
+  id: number
+  source: string
+  period: string
+  summary: string
+  created_at: string
+}

@@ -374,20 +374,23 @@ def search_similar(
         if uses_unified:
             valid = {t.value for t in source_types if t in UNIFIED_SOURCES}
             rows = conn.execute("""
-                SELECT e.source_ref, e.source, em.summary, v.distance
+                SELECT e.source_ref, em.source, em.level, em.period, em.summary, v.distance
                 FROM vec_index v
                 JOIN embeddings em ON v.rowid = em.id
-                JOIN events e ON em.event_id = e.id
+                LEFT JOIN events e ON em.event_id = e.id
                 WHERE v.embedding MATCH ?
                   AND k = ?
                   AND em.level = ?
                 ORDER BY v.distance
             """, (packed, top_k * 4, level)).fetchall()
-            return [
-                (ref, src, content, dist)
-                for ref, src, content, dist in rows
-                if src in valid
-            ][:top_k]
+            results = []
+            for ref, src, lvl, period, content, dist in rows:
+                if src not in valid:
+                    continue
+                if ref is None:
+                    ref = f"{src}/{lvl}/{period}" if period else f"{src}/{lvl}"
+                results.append((ref, src, content, dist))
+            return results[:top_k]
         else:
             source_type = source_types[0]
             vec_table, meta_table = _tables(source_type)
@@ -400,6 +403,54 @@ def search_similar(
                 ORDER BY v.distance
             """, (packed, top_k)).fetchall()
             return [(sid, source_type.value, content, dist) for sid, content, dist in rows]
+
+
+def upsert_level_summary(
+    source: str,
+    level: str,
+    period: str,
+    summary: str,
+    db_path: str = DB_PATH,
+) -> int:
+    """Replace any existing (source, level, period) summary row and re-embed.
+
+    Used for non-raw rollups (weekly/monthly) that are not tied to a single event.
+    Returns the new embeddings.id.
+    """
+    try:
+        vector = embed_text(summary)
+    except Exception as e:
+        print(f"[VectorStore] Embed failed for {source}/{level}/{period}: {e}")
+        raise
+
+    packed = _pack(vector)
+
+    with sqlite3.connect(db_path) as conn:
+        conn.enable_load_extension(True)
+        sqlite_vec.load(conn)
+        conn.enable_load_extension(False)
+
+        old = conn.execute(
+            "SELECT id FROM embeddings WHERE source=? AND level=? AND period=?",
+            (source, level, period),
+        ).fetchall()
+        for (em_id,) in old:
+            conn.execute("DELETE FROM vec_index WHERE rowid=?", (em_id,))
+            conn.execute("DELETE FROM embeddings WHERE id=?", (em_id,))
+
+        em_cur = conn.execute(
+            "INSERT INTO embeddings (event_id, source, level, period, summary)"
+            " VALUES (NULL, ?, ?, ?, ?)",
+            (source, level, period, summary),
+        )
+        new_id = em_cur.lastrowid
+        conn.execute(
+            "INSERT INTO vec_index(rowid, embedding) VALUES (?, ?)",
+            (new_id, packed),
+        )
+        conn.commit()
+
+    return new_id
 
 
 def search_by_level(

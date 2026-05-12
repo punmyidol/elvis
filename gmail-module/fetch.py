@@ -12,6 +12,7 @@ Usage:
 
 import argparse
 import base64
+import json
 import os
 import sqlite3
 import sys
@@ -23,7 +24,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../chatbot"))
 
 from auth import get_gmail_service
-from config import INBOX_MAX
+from config import INBOX_MAX, GMAIL_FETCH_QUERY
 from agent.vector_store import ingest_event, embed_pending, SourceType
 from core.config import DB_PATH
 
@@ -61,45 +62,36 @@ def _parse_date(raw_date: str) -> str:
         return datetime.now().isoformat()
 
 
-def _clear_emails(db_path: str = DB_PATH):
-    """Delete all stored email events before re-ingesting."""
+def _existing_msg_ids(db_path: str = DB_PATH) -> set:
+    """Return Gmail msg_ids already ingested as events (dedup keys)."""
     with sqlite3.connect(db_path) as conn:
-        result = conn.execute(
-            "SELECT COUNT(*) FROM events WHERE source = 'email'"
-        ).fetchone()
-        count = result[0] if result else 0
-
-        # Delete embeddings and vec_index rows first (no FK cascade in SQLite by default)
         rows = conn.execute(
-            "SELECT id FROM events WHERE source = 'email'"
+            "SELECT source_ref FROM events WHERE source = 'email'"
         ).fetchall()
-        for (event_id,) in rows:
-            em_rows = conn.execute(
-                "SELECT id FROM embeddings WHERE event_id = ?", (event_id,)
-            ).fetchall()
-            for (em_id,) in em_rows:
-                conn.execute("DELETE FROM vec_index WHERE rowid = ?", (em_id,))
-            conn.execute("DELETE FROM embeddings WHERE event_id = ?", (event_id,))
-        conn.execute("DELETE FROM events WHERE source = 'email'")
-        conn.commit()
-    print(f"[fetch] Cleared {count} existing email event(s).")
+    return {ref.split("/", 1)[1] for (ref,) in rows if ref and ref.startswith("email/")}
 
 
 def fetch_inbox(max_results: int = INBOX_MAX) -> list:
-    """Fetch up to max_results emails from Gmail inbox. Returns list of dicts."""
+    """Fetch up to max_results emails from Gmail, skipping already-ingested msg_ids."""
     service = get_gmail_service()
 
     result = (
         service.users()
         .messages()
-        .list(userId="me", labelIds=["INBOX"], maxResults=max_results)
+        .list(userId="me", q=GMAIL_FETCH_QUERY, maxResults=max_results)
         .execute()
     )
     messages = result.get("messages", [])
-    print(f"Found {len(messages)} messages in inbox.")
+    print(f"Found {len(messages)} messages matching {GMAIL_FETCH_QUERY!r}.")
+
+    seen = _existing_msg_ids()
+    new_messages = [m for m in messages if m["id"] not in seen]
+    skipped = len(messages) - len(new_messages)
+    if skipped:
+        print(f"Skipping {skipped} already-ingested message(s).")
 
     emails = []
-    for i, msg_ref in enumerate(messages, 1):
+    for i, msg_ref in enumerate(new_messages, 1):
         msg_id = msg_ref["id"]
         msg = (
             service.users()
@@ -117,14 +109,15 @@ def fetch_inbox(max_results: int = INBOX_MAX) -> list:
         body    = body[:2000]
 
         emails.append({
-            "msg_id":  msg_id,
-            "subject": subject,
-            "sender":  sender,
-            "date":    date,
-            "body":    body,
-            "snippet": snippet,
+            "msg_id":    msg_id,
+            "thread_id": msg.get("threadId"),
+            "subject":   subject,
+            "sender":    sender,
+            "date":      date,
+            "body":      body,
+            "snippet":   snippet,
         })
-        print(f"  [{i}/{len(messages)}] {subject[:60]}")
+        print(f"  [{i}/{len(new_messages)}] {subject[:60]}")
 
     return emails
 
@@ -140,9 +133,6 @@ def main():
     print(f"\nFetching {args.count} emails from inbox...")
     emails = fetch_inbox(max_results=args.count)
 
-    print("\nClearing old email events...")
-    _clear_emails()
-
     print(f"\nIngesting {len(emails)} emails into events table...")
     ok = 0
     for e in emails:
@@ -154,6 +144,7 @@ def main():
             title=e["subject"],
             author=e["sender"],
             timestamp=_parse_date(e["date"]),
+            meta=json.dumps({"thread_id": e["thread_id"]}) if e.get("thread_id") else None,
         )
         if inserted:
             ok += 1

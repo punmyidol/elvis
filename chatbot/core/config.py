@@ -13,6 +13,7 @@ load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", "..", ".en
 # ---------------------------------------------------------------------------
 OLLAMA_MODEL = os.getenv("ELVIS_MODEL", "qwen2.5:7b")
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+SUMMARY_MODEL = os.getenv("ELVIS_SUMMARY_MODEL", "qwen2.5:14b")
 
 # ---------------------------------------------------------------------------
 # Database

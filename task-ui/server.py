@@ -60,6 +60,37 @@ app.add_middleware(
 )
 
 
+@app.on_event("startup")
+def _start_background_services() -> None:
+    from services.obsidian import VaultIndexer
+    from core.scheduler import create_scheduler
+
+    indexer = VaultIndexer(db_path=_CAD_DB)
+    threading.Thread(target=indexer.full_reindex, daemon=True).start()
+    print("[Elvis] Obsidian reindex started in background.")
+
+    observer = indexer.start_watcher()
+    observer.start()
+    app.state.vault_observer = observer
+    print("[Elvis] Obsidian vault watcher started.")
+
+    scheduler = create_scheduler(db_path=_CAD_DB)
+    scheduler.start()
+    app.state.scheduler = scheduler
+    print("[Elvis] Scheduler started.")
+
+
+@app.on_event("shutdown")
+def _stop_background_services() -> None:
+    observer = getattr(app.state, "vault_observer", None)
+    if observer is not None:
+        observer.stop()
+        observer.join(timeout=5)
+    scheduler = getattr(app.state, "scheduler", None)
+    if scheduler is not None:
+        scheduler.shutdown(wait=False)
+
+
 class StartRunRequest(BaseModel):
     tasks: list[str]
 
@@ -223,6 +254,26 @@ def cad_script(basename: str):
     if not path.exists():
         raise HTTPException(status_code=404, detail="script not found")
     return {"content": path.read_text()}
+
+
+# ---------------------------------------------------------------------------
+# Weekly summary endpoints
+# ---------------------------------------------------------------------------
+
+@app.get("/api/weekly")
+def weekly_summaries():
+    try:
+        with sqlite3.connect(_CAD_DB) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT id, source, period, summary, created_at"
+                " FROM embeddings"
+                " WHERE level = 'weekly'"
+                " ORDER BY period DESC, source ASC"
+            ).fetchall()
+    except sqlite3.OperationalError:
+        return []
+    return [dict(r) for r in rows]
 
 
 # ---------------------------------------------------------------------------

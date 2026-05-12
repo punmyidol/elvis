@@ -18,3 +18,15 @@ LLM_MODEL = os.getenv("ELVIS_MODEL", "qwen2.5:14b")
 
 # Fetch
 INBOX_MAX = 20
+
+# Gmail search query for which messages to ingest.
+# `category:primary` excludes Promotions / Social / Updates / Forums tabs —
+# Gmail's own classifier strips most newsletters, marketing, and notifications.
+# Override with the GMAIL_FETCH_QUERY env var if you want a different filter
+# (e.g. "is:important", "-category:promotions", "in:inbox").
+GMAIL_FETCH_QUERY = os.getenv(
+    "GMAIL_FETCH_QUERY",
+    "in:inbox category:primary "
+    "-from:noreply -from:no-reply -from:donotreply "
+    "-from:KPLUS -from:security",
+)
