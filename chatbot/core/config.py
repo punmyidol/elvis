@@ -88,3 +88,15 @@ CAD_SCRIPTS_DIR = os.getenv(
 )
 CAD_EXEC_TIMEOUT = 90
 CAD_MAX_RETRIES = 3
+
+# ---------------------------------------------------------------------------
+# Second brain (daily surfacing loop)
+# ---------------------------------------------------------------------------
+SECOND_BRAIN_RAW_WINDOW_DAYS = int(os.getenv("SECOND_BRAIN_RAW_WINDOW_DAYS", "7"))
+SECOND_BRAIN_MAX_PER_RUN = int(os.getenv("SECOND_BRAIN_MAX_PER_RUN", "3"))
+SECOND_BRAIN_HISTORY_TOP_K = int(os.getenv("SECOND_BRAIN_HISTORY_TOP_K", "6"))
+SECOND_BRAIN_MATERIAL_CHANGE_THRESHOLD = int(
+    os.getenv("SECOND_BRAIN_MATERIAL_CHANGE_THRESHOLD", "5")
+)
+SECOND_BRAIN_OBSIDIAN_SUBDIR = os.getenv("SECOND_BRAIN_OBSIDIAN_SUBDIR", "elvis-surfaced")
+SECOND_BRAIN_MODEL = os.getenv("SECOND_BRAIN_MODEL", SUMMARY_MODEL)

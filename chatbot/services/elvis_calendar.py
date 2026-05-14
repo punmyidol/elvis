@@ -64,6 +64,17 @@ def sync_calendar(db_path: str = DB_PATH) -> int:
         import datetime as _dt
 
         with sqlite3.connect(db_path) as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS calendar_cache (
+                    id          TEXT PRIMARY KEY,
+                    title       TEXT NOT NULL,
+                    start_dt    TEXT NOT NULL,
+                    end_dt      TEXT NOT NULL,
+                    description TEXT DEFAULT '',
+                    calendar_id TEXT DEFAULT '',
+                    last_synced TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
             for cal in calendars:
                 cal_id = str(cal.url).rstrip("/").split("/")[-1]
                 try:

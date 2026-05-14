@@ -74,7 +74,7 @@ def _fetch_events(source: str, start: datetime, end: datetime, db_path: str) -> 
     hi = end.strftime("%Y-%m-%d") + " 00:00:00"
     with sqlite3.connect(db_path) as conn:
         rows = conn.execute(
-            "SELECT timestamp, title, content, author"
+            "SELECT timestamp, title, content, author, meta"
             " FROM events"
             " WHERE source = ?"
             "   AND substr(replace(timestamp, 'T', ' '), 1, 19) >= ?"
@@ -85,9 +85,60 @@ def _fetch_events(source: str, start: datetime, end: datetime, db_path: str) -> 
     return rows
 
 
-def _render_events(rows: list[tuple]) -> str:
+def _strip_subject_prefix(subject: str) -> str:
+    """Drop leading Re:/Fwd:/[EXTERNAL] markers for thread title display."""
+    import re as _re
+    return _re.sub(r"^(\s*(re|fwd|fw|\[external\])\s*:?\s*)+", "", subject, flags=_re.I).strip()
+
+
+def _render_email_events(rows: list[tuple]) -> str:
+    """Group emails by thread_id, render each thread as one block."""
+    import json as _json
+    threads: dict[str, list[tuple]] = {}
+    order: list[str] = []
+    for ts, title, content, author, meta in rows:
+        thread_id = None
+        if meta:
+            try:
+                thread_id = _json.loads(meta).get("thread_id")
+            except Exception:
+                pass
+        key = thread_id or f"_solo_{ts}"
+        if key not in threads:
+            threads[key] = []
+            order.append(key)
+        threads[key].append((ts, title, content, author))
+
+    blocks: list[str] = []
+    for key in order:
+        msgs = sorted(threads[key], key=lambda r: r[0] or "")
+        latest_ts, latest_title, latest_content, _ = msgs[-1]
+        date = (latest_ts or "")[:10]
+        title_clean = _strip_subject_prefix(latest_title or "")
+        participants = sorted({a for _, _, _, a in msgs if a})
+        body = (latest_content or "").strip()
+        if len(msgs) == 1:
+            who = participants[0] if participants else ""
+            blocks.append(f"- {date} [{who}] {title_clean}\n  {body}")
+        else:
+            who_list = ", ".join(participants[:4]) + (" …" if len(participants) > 4 else "")
+            blocks.append(
+                f"- {date} THREAD ({len(msgs)} messages) \"{title_clean}\"\n"
+                f"  Participants: {who_list}\n"
+                f"  Latest message: {body}"
+            )
+    text = "\n".join(blocks)
+    if len(text) <= _MAX_CORPUS_CHARS:
+        return text
+    return text[:_HEAD_CHARS] + "\n…[truncated]…\n" + text[-(_MAX_CORPUS_CHARS - _HEAD_CHARS):]
+
+
+def _render_events(source: str, rows: list[tuple]) -> str:
+    if source == "email":
+        return _render_email_events(rows)
     lines: list[str] = []
-    for ts, title, content, author in rows:
+    for row in rows:
+        ts, title, content, author = row[0], row[1], row[2], row[3]
         head = (title or content or "").strip().splitlines()[0] if (title or content) else ""
         body = (content or "").strip()
         date = (ts or "")[:10]
@@ -109,7 +160,7 @@ def _build_user_prompt(source: str, period: str, prev_period: str,
         f"Last week's summary ({prev_period}):\n"
         f"{prev_summary or '(none)'}\n\n"
         f"This week's events ({period}, {len(rows)} items):\n"
-        f"{_render_events(rows)}\n\n"
+        f"{_render_events(source, rows)}\n\n"
         f"Summary:"
     )
 

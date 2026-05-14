@@ -21,10 +21,37 @@ _GMAIL_MODULE_DIR = os.path.normpath(
 
 
 def _fetch_gmail():
+    # obsidian-module and gmail-module both ship a top-level config.py.
+    # services/obsidian.py pins sys.modules["config"] to obsidian's copy, so a
+    # naive `from config import ...` inside gmail-module would resolve to the
+    # wrong module. Swap the cache to gmail's config for the duration of the
+    # fetch, then restore the prior entries.
+    import importlib.util
+
     if _GMAIL_MODULE_DIR not in sys.path:
         sys.path.insert(0, _GMAIL_MODULE_DIR)
-    from fetch import main as gmail_fetch_main
-    gmail_fetch_main()
+
+    _COLLIDING = ("config", "auth", "fetch", "query")
+    saved = {k: sys.modules.get(k) for k in _COLLIDING}
+    for k in _COLLIDING:
+        sys.modules.pop(k, None)
+
+    cfg_spec = importlib.util.spec_from_file_location(
+        "config", os.path.join(_GMAIL_MODULE_DIR, "config.py")
+    )
+    cfg_mod = importlib.util.module_from_spec(cfg_spec)
+    sys.modules["config"] = cfg_mod
+    cfg_spec.loader.exec_module(cfg_mod)
+
+    try:
+        from fetch import main as gmail_fetch_main
+        gmail_fetch_main()
+    finally:
+        for k, prev in saved.items():
+            if prev is not None:
+                sys.modules[k] = prev
+            else:
+                sys.modules.pop(k, None)
 
 from core.config import (
     NEWS_REFRESH_HOUR, NEWS_REFRESH_MINUTE,
@@ -156,7 +183,25 @@ def create_scheduler(db_path: str = None) -> BackgroundScheduler:
         replace_existing=True,
     )
 
-    # Daily engagement check at 02:00
+    # Daily second-brain surfacing at 09:00
+    def _second_brain():
+        from services.second_brain import second_brain_loop
+        from core.config import DB_PATH as _DB
+        n = second_brain_loop(db_path or _DB)
+        print(f"[Scheduler] Second brain: surfaced {n} note(s)")
+
+    scheduler.add_job(
+        func=_second_brain,
+        trigger=CronTrigger(hour=9, minute=0),
+        id="second_brain",
+        name="Daily second-brain surfacing",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=300,
+    )
+
+    # Daily engagement check at 09:05 (5 min after surfacer)
     def _engagement_check():
         from core.engagement import run_engagement_checker
         from core.config import DB_PATH as _DB
@@ -164,10 +209,12 @@ def create_scheduler(db_path: str = None) -> BackgroundScheduler:
 
     scheduler.add_job(
         func=_engagement_check,
-        trigger=CronTrigger(hour=2, minute=0),
+        trigger=CronTrigger(hour=9, minute=5),
         id="engagement_checker",
         name="Daily engagement checker",
         replace_existing=True,
+        max_instances=1,
+        coalesce=True,
         misfire_grace_time=300,
     )
 

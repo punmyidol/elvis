@@ -39,6 +39,7 @@ Single-user personal assistant for MacBook M3. Email, calendar, news, Obsidian n
 | Obsidian | `obsidian-module/` | Vault CRUD (staged writes) + semantic vector search |
 | Shopping | `shopping-module/` | Lazada/Shopee scrapers + price comparison |
 | Voice | `voice/` | mlx-whisper STT + macOS TTS |
+| Second brain | `chatbot/services/second_brain.py` | Daily surfacing loop — picks 1–3 things worth Pun's attention, writes notes into the vault, engagement tracked in `surfaced` |
 
 ---
 
@@ -117,6 +118,7 @@ mem0 backend with Ollama LLM + ChromaDB vector store. Runs ADD/UPDATE/DELETE/NOO
 | `python test_stt.py` | Standalone mic/STT test loop |
 | `python calendar-module/cli.py` | Calendar standalone CLI |
 | `python obsidian-module/crud.py` | Obsidian standalone CLI |
+| `python -m chatbot.services.second_brain run-once` | Run the daily second-brain surfacer immediately (also runs on cron at 09:00; engagement checker at 09:05) |
 
 ---
 
