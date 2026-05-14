@@ -112,3 +112,48 @@ export interface WeeklySummary {
   summary: string
   created_at: string
 }
+
+// Brain (second-brain surfacing)
+export interface BrainSurfacedRow {
+  id: number
+  topic: string
+  source_signals: string[]
+  reason: string
+  obsidian_note_path: string
+  engaged: boolean
+  created_at: string
+}
+
+export interface BrainBucket {
+  total: number
+  engaged: number
+  rate: number
+}
+
+export interface BrainStats {
+  all_time: BrainBucket
+  last_30d: BrainBucket
+  last_7d: BrainBucket
+  by_signal: Record<string, BrainBucket>
+}
+
+export interface BrainTrendPoint {
+  day: string
+  surfaced: number
+  engaged: number
+}
+
+export interface BrainNote {
+  path: string
+  content: string
+}
+
+export interface BrainEngagementRunResult {
+  newly_engaged: number
+  total_engaged: number
+}
+
+export type BrainSurfaceEvent =
+  | { type: 'log'; message: string }
+  | { type: 'done'; written: number }
+  | { type: 'error'; message: string }

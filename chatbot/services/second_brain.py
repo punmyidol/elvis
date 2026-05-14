@@ -41,7 +41,13 @@ from core.config import (
     SECOND_BRAIN_RAW_WINDOW_DAYS,
 )
 from services.obsidian import VAULT_ROOT, _STAGING_DIR  # noqa: F401 — bridge inits sys.path
-from services.retrieval import get_week_dump, knn_history
+from services.retrieval import (
+    get_week_dump,
+    knn_history,
+    get_recent_edits,
+    get_engaged_surfacings,
+    get_completed_tasks,
+)
 from services.weekly_summarizer import _render_events
 
 # obsidian-module is already on sys.path after importing services.obsidian
@@ -278,7 +284,75 @@ def _pick_topics(ctx: dict, llm: ChatOllama) -> list[dict]:
 # LLM #2 — synthesize note
 # ---------------------------------------------------------------------------
 
-def _build_note_prompt(item: dict, evidence: list[dict], history: list[dict]) -> str:
+def _format_full_context(fc: dict) -> str:
+    """Format full_context bundle into a brief prompt section."""
+    lines: list[str] = []
+
+    vault_knn = fc.get("vault_knn") or []
+    if vault_knn:
+        titles = []
+        for h in vault_knn[:5]:
+            title = h.get("source_ref", "").split("/")[-1].replace(".md", "")
+            excerpt = (h.get("content") or "")[:80].replace("\n", " ")
+            titles.append(f"  • {title} — {excerpt}" if excerpt else f"  • {title}")
+        lines.append("- Vault on this topic:\n" + "\n".join(titles))
+
+    recent = fc.get("recent_edits") or []
+    if recent:
+        names = [r.get("title") or r.get("source_ref", "") for r in recent[:5]]
+        lines.append("- Recently edited:     " + ", ".join(n for n in names if n))
+
+    engaged = fc.get("engaged_history") or []
+    if engaged:
+        topics = [e.get("topic", "") for e in engaged[:5]]
+        lines.append("- Previously engaged:  " + ", ".join(t for t in topics if t))
+
+    completed = fc.get("completed_tasks") or []
+    if completed:
+        tasks = [c.get("task", "") for c in completed[:5]]
+        lines.append("- Already completed:   " + ", ".join(t[:60] for t in tasks if t))
+
+    return "\n".join(lines) if lines else "(none)"
+
+
+_FC_SIZE_HARD_CAP = 32_000
+_FC_CONTENT_KEYS = {"content"}
+
+
+def _cap_full_context_json(fc: dict) -> str:
+    """Serialize full_context as a compact snapshot (titles + refs + timestamps,
+    no full content). Hard cap at 32KB; if still over, drop vault_knn entirely."""
+    _strip = lambda rows, keep: [
+        {k: v for k, v in r.items() if k in keep} for r in (rows or [])
+    ]
+    compact = {
+        "topic":           fc.get("topic"),
+        "vault_knn":       _strip(fc.get("vault_knn"), {"source_ref", "source", "distance"}),
+        "recent_edits":    _strip(fc.get("recent_edits"), {"title", "source_ref", "source", "timestamp"}),
+        "engaged_history": _strip(fc.get("engaged_history"), {"topic", "created_at"}),
+        "completed_tasks": _strip(fc.get("completed_tasks"), {"task", "run_id", "created_at"}),
+    }
+    raw = json.dumps(compact, ensure_ascii=False)
+    if len(raw) <= _FC_SIZE_HARD_CAP:
+        return raw
+    # Still over — drop vault_knn
+    compact["vault_knn"] = []
+    return json.dumps(compact, ensure_ascii=False)
+
+
+def _build_note_prompt(
+    item: dict,
+    evidence: list[dict],
+    history: list[dict],
+    full_context: dict | None = None,
+) -> str:
+    context_block = ""
+    if full_context:
+        context_block = (
+            "\nContext (for grounding only — do NOT quote in Evidence):\n"
+            + _format_full_context(full_context)
+            + "\n"
+        )
     return (
         f"Write a short note about: {item['topic']}\n\n"
         f"Why it matters: {item['reason']}\n\n"
@@ -287,7 +361,8 @@ def _build_note_prompt(item: dict, evidence: list[dict], history: list[dict]) ->
         "appears here):\n"
         f"{_format_evidence(evidence)}\n\n"
         "Related historical context:\n"
-        f"{_format_history(history)}\n\n"
+        f"{_format_history(history)}\n"
+        f"{context_block}\n"
         "Format exactly:\n"
         f"## {item['topic']}\n"
         "**Signal:** {one sentence}\n"
@@ -306,8 +381,9 @@ def _synthesize_note(
     evidence: list[dict],
     history: list[dict],
     llm: ChatOllama,
+    full_context: dict | None = None,
 ) -> str:
-    prompt = _build_note_prompt(item, evidence, history)
+    prompt = _build_note_prompt(item, evidence, history, full_context)
     result = llm.invoke([
         SystemMessage(content=_NOTE_SYSTEM_PROMPT),
         HumanMessage(content=prompt),
@@ -346,12 +422,14 @@ def _record_surfaced(
     reason: str,
     note_path: str,
     db_path: str,
+    full_context_json: str | None = None,
 ) -> int:
     with sqlite3.connect(db_path) as conn:
         cur = conn.execute(
-            "INSERT INTO surfaced (topic, source_signals, reason, obsidian_note_path)"
-            " VALUES (?, ?, ?, ?)",
-            (topic, json.dumps(source_signals), reason, note_path),
+            "INSERT INTO surfaced"
+            " (topic, source_signals, reason, obsidian_note_path, full_context_json)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (topic, json.dumps(source_signals), reason, note_path, full_context_json),
         )
         conn.commit()
     return cur.lastrowid
@@ -403,6 +481,207 @@ def _select_evidence(
 
 
 # ---------------------------------------------------------------------------
+# Build-plan classifier + skeleton planner
+# ---------------------------------------------------------------------------
+
+_BUILD_KEYWORDS = (
+    "setup", "build", "system", "hardware", "circuit",
+    "install", "deploy", "detection", "sensor", "camera",
+)
+
+
+def _is_build_plan(item: dict) -> bool:
+    text = (item["topic"] + " " + item.get("reason", "")).lower()
+    return any(k in text for k in _BUILD_KEYWORDS)
+
+
+_BUILD_SKELETON = [
+    ("Identify requirements",
+     "Search vault and emails for all notes about this project. Extract key "
+     "requirements as a bullet list covering: physical constraints, environment "
+     "(indoor/outdoor/standalone), power supply, connectivity, and budget."),
+    ("Identify hardware options",
+     "Web search for hardware components that satisfy the requirements. "
+     "List 1-3 candidate parts for each requirement category."),
+    ("Compare hardware prices",
+     "For each candidate part, fetch current prices and product page links. "
+     "Output a markdown table with columns: Component | Option | Price | Link."),
+    ("Draft circuit / wiring diagram",
+     "Write a Mermaid flowchart block (```mermaid) showing how all components "
+     "connect. Label every edge with the signal type: PWR, GND, GPIO, I2C, USB, "
+     "UART, etc. Include power rails."),
+    ("Sanity check",
+     "Cross-check the selected components: voltage/current compatibility, physical "
+     "fit, software driver availability for the chosen OS/platform, and confirm "
+     "the budget total from the price table."),
+    ("Write complete build steps",
+     "Write a numbered step-by-step build guide. Each step must include: tools "
+     "needed, safety notes, the action, and a verification test to confirm the "
+     "step succeeded before moving on."),
+]
+
+_BUILD_PLAN_SYSTEM_PROMPT = (
+    "You are Elvis, Pun's background assistant. You are filling in a structured "
+    "build plan for a technical project. For each step given, write a specific "
+    "description tailored to the project using Elvis's tools: web_search, "
+    "fetch_url, search_obsidian, search_gmail, write_document.\n"
+    "Output strict JSON only — no prose, no markdown fences."
+)
+
+
+def _plan_build_tasks(
+    item: dict,
+    note_body: str,
+    full_context: dict,
+    llm: ChatOllama,
+) -> list[dict]:
+    """Fill the 6-step build skeleton with project-specific descriptions."""
+    fc = full_context
+    vault_briefs = "; ".join(
+        h.get("source_ref", "").split("/")[-1].replace(".md", "")
+        for h in (fc.get("vault_knn") or [])[:5]
+    )
+    completed_briefs = "; ".join(
+        c.get("task", "")[:60] for c in (fc.get("completed_tasks") or [])[:5]
+    )
+    skeleton_lines = "\n".join(
+        f"{i+1}. {title}: {desc}"
+        for i, (title, desc) in enumerate(_BUILD_SKELETON)
+    )
+    prompt = (
+        f"Project: {item['topic']}\n"
+        f"Reason: {item['reason']}\n\n"
+        f"Note just written:\n{note_body}\n\n"
+        f"What already exists in the vault: {vault_briefs or '(none)'}\n"
+        f"Already completed tasks: {completed_briefs or '(none)'}\n\n"
+        "Below are 6 required steps. Keep each title EXACTLY as given. "
+        "Write a project-specific description for each step. "
+        "If a step is already done (see 'Already completed'), set its description "
+        "to 'Already done — <brief summary>' so Elvis skips redundant work.\n\n"
+        f"Steps:\n{skeleton_lines}\n\n"
+        'Output JSON: [{"sequence": 1, "title": "...", "description": "..."}]'
+    )
+    result = llm.invoke([
+        SystemMessage(content=_BUILD_PLAN_SYSTEM_PROMPT),
+        HumanMessage(content=prompt),
+    ])
+    raw = (result.content if hasattr(result, "content") else str(result)).strip()
+    raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.MULTILINE)
+    raw = re.sub(r"```\s*$", "", raw, flags=re.MULTILINE).strip()
+    try:
+        steps = json.loads(raw)
+        if not isinstance(steps, list):
+            return []
+        valid = []
+        for i, s in enumerate(steps[:6]):
+            if isinstance(s, dict) and s.get("title") and s.get("description"):
+                valid.append({
+                    "sequence":    int(s.get("sequence", i + 1)),
+                    "title":       str(s["title"]),
+                    "description": str(s["description"]),
+                })
+        return valid
+    except (json.JSONDecodeError, ValueError):
+        print(f"[SecondBrain] _plan_build_tasks: failed to parse: {raw[:200]}")
+        return []
+
+
+# ---------------------------------------------------------------------------
+# Task planner
+# ---------------------------------------------------------------------------
+
+_PLAN_SYSTEM_PROMPT = (
+    "You are Elvis, Pun's background assistant. You plan concrete research and "
+    "tabulation tasks that Elvis can execute using his tools: web search, email "
+    "search, calendar lookup, Obsidian vault search, and news retrieval.\n"
+    "ONLY propose tasks in these two categories:\n"
+    "  • Research — look something up via web, email, calendar, vault, or news\n"
+    "  • Tabulate — aggregate, compare, or summarise information already in the system\n"
+    "NEVER propose: writing code, code review, documentation writing, file edits, "
+    "or any task requiring tools Elvis does not have.\n"
+    "Output strict JSON only — no prose, no markdown fences."
+)
+
+_PLAN_MAX_STEPS = 5
+
+
+def _plan_tasks(
+    item: dict,
+    note_body: str,
+    full_context: dict,
+    llm: ChatOllama,
+) -> list[dict]:
+    """Ask the LLM to propose ≤5 sequenced next steps for the surfaced topic.
+    Returns list of {sequence, title, description}. Empty list = nothing to do."""
+    fc = full_context
+
+    vault_briefs = "; ".join(
+        h.get("source_ref", "").split("/")[-1].replace(".md", "")
+        for h in (fc.get("vault_knn") or [])[:5]
+    )
+    recent_briefs = "; ".join(
+        r.get("title") or r.get("source_ref", "") for r in (fc.get("recent_edits") or [])[:5]
+    )
+    completed_briefs = "; ".join(
+        c.get("task", "")[:60] for c in (fc.get("completed_tasks") or [])[:5]
+    )
+
+    prompt = (
+        f"Pun has just surfaced this topic:\n"
+        f"{item['topic']} — {item['reason']}\n\n"
+        f"Note just written:\n{note_body}\n\n"
+        "What already exists (do not re-do these):\n"
+        f"- Vault on topic:    {vault_briefs or '(none)'}\n"
+        f"- Recently edited:   {recent_briefs or '(none)'}\n"
+        f"- Already completed: {completed_briefs or '(none)'}\n\n"
+        f"Propose at most {_PLAN_MAX_STEPS} sequenced tasks Elvis can run autonomously. "
+        "Each task must be either research (look something up via web, email, calendar, "
+        "vault, or news) or tabulation (aggregate/compare/summarise existing data). "
+        "Do NOT propose writing code, code review, documentation edits, or anything "
+        "requiring tools beyond web search, email search, calendar, vault, and news. "
+        "Tasks must not duplicate anything in the lists above. "
+        "If nothing useful remains, output [].\n\n"
+        'Output JSON: [{"sequence": 1, "title": "...", "description": "..."}]'
+    )
+
+    result = llm.invoke([
+        SystemMessage(content=_PLAN_SYSTEM_PROMPT),
+        HumanMessage(content=prompt),
+    ])
+    raw = (result.content if hasattr(result, "content") else str(result)).strip()
+
+    # Strip markdown fences if present
+    raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.MULTILINE)
+    raw = re.sub(r"```\s*$", "", raw, flags=re.MULTILINE).strip()
+
+    try:
+        steps = json.loads(raw)
+        if not isinstance(steps, list):
+            return []
+        valid = []
+        for s in steps[:_PLAN_MAX_STEPS]:
+            if isinstance(s, dict) and s.get("title") and s.get("description"):
+                valid.append({
+                    "sequence":    int(s.get("sequence", len(valid) + 1)),
+                    "title":       str(s["title"]),
+                    "description": str(s["description"]),
+                })
+        return valid
+    except (json.JSONDecodeError, ValueError):
+        print(f"[SecondBrain] _plan_tasks: failed to parse LLM response: {raw[:200]}")
+        return []
+
+
+def record_surfaced_run(surfaced_id: int, run_id: str, db_path: str = DB_PATH) -> None:
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO surfaced_tasks (surfaced_id, run_id) VALUES (?, ?)",
+            (surfaced_id, run_id),
+        )
+        conn.commit()
+
+
+# ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
 
@@ -450,7 +729,15 @@ def second_brain_loop(db_path: str = DB_PATH) -> int:
             db_path=db_path,
         )
 
-        body = _synthesize_note(item, evidence, history, llm)
+        full_context = {
+            "topic":           item["topic"],
+            "vault_knn":       knn_history(item["topic"], top_k=12, db_path=db_path),
+            "recent_edits":    get_recent_edits(days=14, db_path=db_path),
+            "engaged_history": get_engaged_surfacings(limit=20, db_path=db_path),
+            "completed_tasks": get_completed_tasks(limit=20, db_path=db_path),
+        }
+
+        body = _synthesize_note(item, evidence, history, llm, full_context)
         if not body:
             print(f"[SecondBrain] Empty note for {item['topic']!r}, skipping.")
             continue
@@ -469,9 +756,52 @@ def second_brain_loop(db_path: str = DB_PATH) -> int:
             reason=item["reason"],
             note_path=note_path,
             db_path=db_path,
+            full_context_json=_cap_full_context_json(full_context),
         )
         print(f"[SecondBrain] Surfaced #{row_id}: {item['topic']} → {note_path}")
         written += 1
+
+        # Task planning — build-plan topics get the 6-step skeleton planner
+        is_build = _is_build_plan(item)
+        steps = (
+            _plan_build_tasks(item, body, full_context, llm)
+            if is_build
+            else _plan_tasks(item, body, full_context, llm)
+        )
+        if not steps:
+            print(f"[SecondBrain]   No tasks planned for {item['topic']!r}.")
+            continue
+
+        plan_type = "build-plan" if is_build else "research"
+        print(f"[SecondBrain]   Planned {len(steps)} {plan_type} task(s):")
+        for s in steps:
+            print(f"    [{s['sequence']}] {s['title']}")
+
+        task_strings = [
+            f"[{s['sequence']}] {s['title']}: {s['description']}"
+            for s in steps
+        ]
+
+        from agent.task_runner import start_run, resume_run, consolidate_run
+        run_id = start_run(task_strings)
+        record_surfaced_run(row_id, run_id, db_path)
+        print(f"[SecondBrain]   Run {run_id} started — executing tasks...")
+
+        for status_line in resume_run(run_id):
+            print(f"[SecondBrain]     {status_line}")
+
+        # Consolidate outputs into a single vault note (build plans only)
+        if is_build:
+            from pathlib import Path as _Path
+            plan_body = consolidate_run(run_id)
+            plan_slug = f"{slug}-build-plan"
+            plan_rel = f"{SECOND_BRAIN_OBSIDIAN_SUBDIR}/{today}-{plan_slug}.md"
+            plan_fm = {"elvis": "build-plan", "source_surfaced_id": row_id, "created": today}
+            plan_op = stage_create(plan_rel, plan_fm, plan_body, VAULT_ROOT, _STAGING_DIR)
+            StagingArea(_STAGING_DIR, VAULT_ROOT).apply(plan_op.note_path)
+            abs_note = _Path(VAULT_ROOT) / note_path
+            abs_note.write_text(abs_note.read_text() + f"\n\n**Build plan:** [[{today}-{plan_slug}]]\n")
+            print(f"[SecondBrain]   Build plan written → {plan_rel}")
 
     return written
 

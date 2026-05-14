@@ -352,18 +352,6 @@ def get_today_plan() -> str:
 
     return plan + cal_section
 
-
-@tool
-def get_recent_edits(days: int = 7) -> str:
-    """
-    List Obsidian vault notes that were edited within the last N days (default 7).
-    Use this when the user asks "what have I been working on lately", "what notes did I edit
-    recently", "show me my recent changes", or any question about recently modified notes.
-    """
-    from services.obsidian import get_recent_edits_logic
-    return get_recent_edits_logic(days)
-
-
 @tool
 def read_obsidian_note(note_ref: str) -> str:
     """
@@ -464,7 +452,7 @@ ELVIS_TOOLS = [
     get_current_time, web_search, fetch_url, get_news,
     get_calendar, list_calendars, create_calendar_event, delete_calendar_event, update_calendar_event,
     remember, show_memories, delete_memory,
-    search_gmail, search_obsidian, get_today_plan, get_recent_edits, read_obsidian_note, update_obsidian_note, search_documents,
+    search_gmail, search_obsidian, get_today_plan, read_obsidian_note, update_obsidian_note, search_documents,
     list_documents, read_document, write_document, delete_document, move_document,
     generate_cad_model,
 ]

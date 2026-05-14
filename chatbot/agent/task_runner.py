@@ -140,8 +140,28 @@ def resume_run(run_id: str) -> Generator[str, None, None]:
             task_info["status"] = "failed"
             task_info["error"] = str(e)
             yield f"[{idx}/{n}] Failed: {e}"
+            _save_checkpoint(run_id, checkpoint)
+            return  # stop the run on first failure — dependent steps cannot proceed
 
         _save_checkpoint(run_id, checkpoint)
+
+
+def consolidate_run(run_id: str) -> str:
+    """Merge all task outputs into a single markdown document."""
+    checkpoint = _load_checkpoint(run_id)
+    parts = []
+    for t in checkpoint["tasks"]:
+        raw_title = t["task"].split(":", 1)[0]
+        title = re.sub(r"^\[\d+\]\s*", "", raw_title).strip()
+        heading = f"## Step {t['index']} — {title}"
+        if t["status"] == "done" and t["output_file"]:
+            content = (_run_dir(run_id) / t["output_file"]).read_text()
+            parts.append(f"{heading}\n\n{content}")
+        elif t["status"] == "failed":
+            parts.append(f"{heading}\n\n_(failed: {t.get('error', 'unknown')})_")
+        else:
+            parts.append(f"{heading}\n\n_(skipped)_")
+    return "\n\n---\n\n".join(parts)
 
 
 def list_runs() -> list[dict]:

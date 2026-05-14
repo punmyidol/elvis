@@ -1,383 +1,197 @@
-# Second Brain: Surfacing Loop
+# Second Brain v3 — Actionable Build Plans
 
-Elvis watches passively. Once a day it asks: *given everything that happened
-this week and everything that's been going on before, what 1–3 things are
-worth my attention?* When it finds something, it writes a structured note
-into the Obsidian vault and tracks whether you engaged with it.
+Extends v2 (`chatbot/services/second_brain.py`). v2 surfaces topics and runs
+short research tasks; v3 produces a **structured, multi-step build plan** for
+technical topics (hardware, system setup, project execution) and writes the
+consolidated result back into the Obsidian vault as an actionable todo note.
 
-This plan assumes the ingestion layer is already in place (commits `4cab5a8`,
-`26f7fb8`, `67398b4`, `bac7630`). Raw events + weekly summaries exist in
-`elvis.db` across 5 sources.
-
-The core simplification: **don't scaffold the LLM with pattern templates or
-staleness heuristics.** Dump labeled raw data + weekly summaries + recent
-surfacings into qwen2.5:14b, let it pick what's worth raising, then KNN-retrieve
-historical context for each chosen topic. Two LLM calls, no structural
-pre-filtering.
+All LLM calls stay on local **`qwen2.5:14b`** via Ollama (`SECOND_BRAIN_MODEL`).
 
 ---
 
-## Existing Schema (already populated)
+## Problems being solved
 
-```sql
-events (
-    id, source, source_ref UNIQUE, content, title, author, meta,
-    timestamp, embedded
-)
--- source ∈ {calendar, email, git, obsidian, todo}
-
-embeddings (
-    id, event_id REFERENCES events(id),
-    source, level, period, summary, created_at
-)
--- level ∈ {raw, weekly, monthly}
--- period e.g. "2026-W20"; NULL for level='raw'
-
-vec_index  -- vec0 virtual table, float[768]
--- rowid is shared with embeddings.id (verify before relying on it)
-```
-
-The surfacer reads these. The only schema addition is the `surfaced` table.
-
-### What's missing in the data right now
-
-- **Monthly summaries**: 0 rows. Defer monthly until ≥8 weeks of history.
-- **`vec_index.rowid == embeddings.id`**: assumed, not verified. **Step 0** is
-  to confirm this against `bac7630` ingestion code. If wrong, add an
-  `embedding_rowid` column to `embeddings` in a one-time migration before any
-  retrieval code is written.
+| # | Problem | Impact |
+|---|---|---|
+| 1 | Planner produces 2 generic tasks instead of a full 6-step plan | Plans are too shallow to be useful |
+| 2 | No output consolidation — results scatter across `runs/{id}/task_XX.txt` | Pun never sees a coherent document |
+| 3 | "Draw circuit diagrams" has no tool | Step 4 silently fails or hallucinates |
+| 4 | Vault KNN returns noise (Roblox, Micky BD) instead of project notes | Step 1 requirements extraction is blind |
+| 5 | research/tabulation constraint blocks steps 3–6 | Planner self-censors valid build steps |
 
 ---
 
-## 1. Existing `surfaced` Table — Reuse As-Is
+## 1. Fix vault KNN noise
 
-The table already exists in `chatbot/core/db.py:73` with this schema:
+**Root cause:** `vec_index` embeddings are stale — the vault indexer hasn't run
+since new notes were added.
 
-```sql
-surfaced (
-    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-    topic              TEXT NOT NULL,
-    source_signals     TEXT NOT NULL DEFAULT '[]',  -- JSON list of source NAMES, e.g. ["obsidian","git"]
-    reason             TEXT,
-    obsidian_note_path TEXT,
-    engaged            INTEGER NOT NULL DEFAULT 0,  -- 0 or 1
-    created_at         TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-)
-```
+**Fix:** Re-run `python obsidian-module/indexer.py` as part of the setup and
+add it to the existing Obsidian ingestion loop so the index stays fresh.
 
-Note: `source_signals` is the *set of sources to watch for engagement*, not a
-list of event ids. The surfacer writes which sources the user is most likely
-to engage through (typically `["obsidian","git"]`); the engagement checker
-reads it to know which streams to scan.
-
-**No schema changes required** for v1. The note body lives on disk at
-`obsidian_note_path` — don't duplicate it in the DB.
-
-### Possible additive migration (deferred)
-
-If threshold tuning needs distance data from real runs, add these later as
-nullable columns — don't rip out `engaged`:
-
-```sql
-ALTER TABLE surfaced ADD COLUMN engaged_at TEXT;
-ALTER TABLE surfaced ADD COLUMN engagement_score REAL;
-```
-
-Not in this plan.
+No code changes in `second_brain.py`. This is a one-time re-index + scheduler
+hygiene fix.
 
 ---
 
-## 2. Retrieval Helpers
+## 2. Build-plan task skeleton — `second_brain.py`
 
-Lives in `chatbot/services/retrieval.py` (new file). Two small functions, no
-elaborate `retrieve_context` umbrella.
+### 2.1 Detect "build plan" topics
 
-```python
-def get_week_dump(days: int = 7, sources: list[str] | None = None) -> dict:
-    """
-    Pull recent raw events grouped by source, plus all weekly summaries,
-    plus the last N surfaced rows. Returns dict ready to inject into an LLM prompt.
-
-    {
-        "raw_by_source": {
-            "calendar": [event_row, ...],
-            "email":    [event_row, ...],
-            "git":      [event_row, ...],
-            "obsidian": [event_row, ...],
-            "todo":     [event_row, ...],
-        },
-        "calendar_next_48h": [event_row, ...],   # forward-looking, separate
-        "weeklies":          [embedding_row, ...],
-        "recent_surfacings": [surfaced_row, ...],
-    }
-    """
-```
+After `_pick_topics`, classify each item as either `research` or `build_plan`:
 
 ```python
-def knn_history(query: str, top_k: int = 6, level: str = "raw") -> list[dict]:
-    """
-    KNN over vec_index using `query` as the embedding seed.
-    Joins back to embeddings + events for context.
-    """
+def _is_build_plan(item: dict) -> bool:
+    """True when the topic looks like a hardware/system build project."""
+    keywords = ("setup", "build", "system", "hardware", "circuit",
+                "install", "deploy", "detection", "sensor", "camera")
+    text = (item["topic"] + " " + item["reason"]).lower()
+    return any(k in text for k in keywords)
 ```
 
-That's it for retrieval. No `retrieve_context` super-function, no recency-vs-
-history dual-path, no per-tool wrappers. Two calls — one to assemble the
-prompt input, one to pull history per surfaced topic.
+Simple keyword heuristic — no extra LLM call.
+
+### 2.2 `_plan_build_tasks` — new function
+
+For `build_plan` topics, replace the generic `_plan_tasks` with a skeleton
+planner that **fills in a fixed 6-step outline** rather than generating
+structure from scratch:
+
+```python
+_BUILD_SKELETON = [
+    ("Identify requirements",
+     "Search vault and emails for notes about this project. "
+     "Extract key requirements as a bullet list (physical constraints, "
+     "environment, power, connectivity, budget)."),
+    ("Identify hardware options",
+     "Web search for hardware components that satisfy the requirements. "
+     "List candidate parts for each requirement."),
+    ("Compare hardware prices",
+     "For each candidate part, fetch current prices and product links. "
+     "Produce a markdown table: Component | Option | Price | Link."),
+    ("Draft circuit / wiring diagram",
+     "Write a Mermaid flowchart (```mermaid) showing how components connect. "
+     "Label each edge with signal type (PWR, GND, GPIO, I2C, USB, etc.)."),
+    ("Sanity check",
+     "Cross-check: voltage/current compatibility, physical fit, "
+     "software driver availability, and budget total."),
+    ("Write complete build steps",
+     "Write a numbered step-by-step build guide with tools needed, "
+     "safety notes, and verification tests after each step."),
+]
+```
+
+The LLM receives the skeleton steps and fills in **project-specific
+descriptions** for each. This guarantees all 6 steps appear and are grounded
+in the actual topic.
+
+Prompt outline:
+
+```
+You are Elvis building a plan for: {topic}
+Reason: {reason}
+
+What already exists:
+{full_context brief}
+
+Below are 6 required steps. For each step, keep the title exactly as given
+and write a specific description tailored to this project. If a step is
+already done (see "Already completed"), say so briefly and skip.
+
+Steps:
+1. Identify requirements ...
+...
+6. Write complete build steps ...
+
+Output JSON: [{"sequence": 1, "title": "...", "description": "..."}]
+```
+
+The constraint shifts from "research/tabulation only" to "use Elvis's tools:
+web_search, fetch_url, search_obsidian, search_gmail, write_document."
+
+### 2.3 Remove `<10 min` cap for build plans
+
+The existing `_plan_tasks` prompt says "doable in <10 minutes". `_plan_build_tasks`
+drops this — build steps are multi-minute by nature.
 
 ---
 
-## 3. Surfacing Loop
+## 3. Output consolidation — `task_runner.py` + `second_brain.py`
 
-Runs daily at 09:00 via APScheduler. Lives in
-`chatbot/services/second_brain.py` (new file).
+### 3.1 `consolidate_run(run_id) -> str`
 
-### 3.1 Assemble context
-
-```python
-ctx = get_week_dump(days=7)
-```
-
-Rough token budget: ~23 events/week × ~500 chars + 9 weeklies × ~500 chars +
-10 surfacings × ~200 chars ≈ 6k tokens. Well inside qwen2.5:14b's window.
-Re-measure after the first real run; trim raw events to title+excerpt if it
-exceeds 12k.
-
-### 3.2 LLM call #1 — pick topics
-
-```
-prompt:
-  You are Elvis, a background assistant. Read the user's week and pick 1-3
-  things worth surfacing to them.
-
-  Calendar in the next 48h:
-  {calendar_next_48h_formatted}
-
-  This week's raw activity (by source):
-  {raw_by_source_formatted}
-
-  Prior weekly summaries:
-  {weeklies_formatted}
-
-  You have already surfaced these recently — do not repeat:
-  {recent_surfacings_formatted}
-
-  Pick items that are non-obvious, cross-source, or thread-going-cold. Avoid
-  generic "X happened this week" recaps. Avoid restating what's on the
-  calendar — only flag a calendar item if there's a related signal in
-  another source.
-
-  Output JSON, max 3 items:
-  [
-    {
-      "topic": "<=60 chars, specific",
-      "reason": "one sentence on the structural signal",
-      "history_query": "short phrase to retrieve related historical context",
-      "source_signals": ["obsidian", "git", ...]   // sources the user is most likely to engage through
-    }
-  ]
-
-  If nothing is worth surfacing, output [].
-```
-
-Model: `qwen2.5:14b` (override via `ELVIS_MODEL`).
-Parse with `json.loads`; on parse failure log + skip the run rather than
-retry. Hard cap: 3 items, regardless of output length.
-
-### 3.3 KNN history per topic
-
-For each picked topic:
+New function in `task_runner.py`:
 
 ```python
-history = knn_history(query=item["history_query"], top_k=6, level="raw")
+def consolidate_run(run_id: str) -> str:
+    """Concatenate all done task outputs into a single markdown document."""
 ```
 
-This is the only embedding work in the loop, and it only runs after the
-model has chosen what it cares about. No upfront broad-spectrum retrieval.
+Returns a markdown string with each task's output under a `## Step N — Title`
+heading. Called after `resume_run` completes.
 
-### 3.4 LLM call #2 — synthesize the note
+### 3.2 Write consolidated note to vault
 
+After `consolidate_run`, call `write_document` (existing tool, sandboxed to
+`chatbot/documents/`) to save the plan, **or** stage it as an Obsidian note
+via `stage_create` so it appears in the vault alongside the surfaced note.
+
+Target vault path:
 ```
-prompt:
-  Write a short note about: {topic}
-
-  Why it matters: {reason}
-
-  Evidence from this week:
-  {evidence_event_rows}
-
-  Related historical context:
-  {history_formatted}
-
-  Format:
-  ## {topic}
-  **Signal:** {one sentence}
-  **Evidence:** bulleted, concrete
-  **Historical context:** 2-3 bullets if relevant, omit otherwise
-  **Suggested next action:** one concrete thing the user could do
-
-  ≤200 words. Be specific.
+elvis-surfaced/{date}-{slug}-build-plan.md
 ```
 
-### 3.5 Write order (crash safety)
-
-```
-1. Write {vault}/elvis-surfaced/{YYYY-MM-DD}-{slug}.md
-2. INSERT into surfaced (topic, source_signals, reason, obsidian_note_path)
-   with engaged defaulting to 0
-```
-
-Note first, row second. Reverse leaves the table pointing at a missing file.
-The note will be ingested as a normal `obsidian` event on the next watchdog
-cycle — that's fine; the engagement checker reads from `events` and the
-surfacer's own note is post-creation activity, so it wouldn't false-match
-unless it's still there N days later (and by then any real engagement note
-would also exist).
-
-### 3.6 Pre-check (skip empty runs)
-
-Before LLM call #1:
-
-```python
-def materially_changed_since(last_run_at: str) -> bool:
-    n = db.execute(
-        "SELECT COUNT(*) FROM events WHERE timestamp > ?", (last_run_at,)
-    ).fetchone()[0]
-    return n >= 5
-```
-
-If `False`, skip the run. Daily cadence means this rarely fires as a skip,
-but cheap insurance for quiet days.
-
----
-
-## 4. Engagement Loop — Already Exists
-
-`chatbot/core/engagement.py` already implements `run_engagement_checker()`
-and `check_topic_appears()`. Re-use as-is for v1.
-
-What it does:
-
-- Reads `surfaced` rows where `engaged = 0` and `created_at >= now - 7 days`.
-- For each, extracts keywords from `topic` (stopword filtering, first 6 alpha
-  words).
-- Three checks, OR'd: any one hit marks `engaged = 1`.
-  1. **`_check_obsidian`** — keyword match against `events.title|meta|content`
-     joined to `vault_index_meta` for files modified after `created_at`.
-  2. **`_check_git`** — `git log --since=<created_at> --pretty=%s --name-only`
-     in `_VAULT_ROOT`, keyword match in output.
-  3. **`_check_obsidian_vector`** — calls
-     `obsidian-module/rag/vector.search_obsidian_vectors(topic, top_k=5)`;
-     any returned note modified after `created_at` counts.
-
-Window: 7 days unengaged then stops re-checking.
-Signal filtering: respects `source_signals` from the row (`"obsidian" in signals`,
-`"git" in signals`).
-
-### Known issues to revisit later (NOT in v1)
-
-- **Any vector hit counts as engagement** — no cosine threshold. Could be too
-  loose. If false-positive rate looks high after a few weeks, add a distance
-  threshold to `_check_obsidian_vector`.
-- **`_check_git` runs in `_VAULT_ROOT`**, not Elvis's repo or the user's
-  current project. If the vault isn't under git, git engagement never fires.
-  Confirm whether the vault is actually a git repo; if not, either point at a
-  configured project repo or drop the git check.
-- **No distance/timestamp logging.** When tuning becomes needed, the additive
-  migration in §1 plus a debug log line per check is the path.
-
-### Scheduler
-
-`chatbot/services/scheduler.py` should register the checker daily at 09:05
-(5 min after the surfacer):
-
-```python
-scheduler.add_job(run_engagement_checker, 'cron', hour=9, minute=5,
-                  id='engagement_check', max_instances=1, coalesce=True)
-```
-
----
-
-## 5. Scheduler Wiring
-
-In `chatbot/services/scheduler.py`:
-
-```python
-scheduler.add_job(second_brain_loop, 'cron', hour=9, minute=0,
-                  id='second_brain', max_instances=1, coalesce=True)
-
-scheduler.add_job(check_engagement, 'cron', hour=9, minute=5,
-                  id='engagement_check', max_instances=1, coalesce=True)
-```
-
-Also expose a manual trigger (`python -m chatbot.services.second_brain run-once`)
-for testing and for "I had a big day, look again."
-
----
-
-## 6. Config Additions
-
-`config.yaml`:
-
+Frontmatter:
 ```yaml
-second_brain:
-  raw_window_days: 7
-  surfaced_max_per_run: 3
-  history_top_k: 6
-  material_change_threshold: 5
-  obsidian_subdir: "elvis-surfaced"
-  model: null   # null = use ELVIS_MODEL / default
+elvis: build-plan
+source_surfaced_id: {row_id}
+created: {date}
 ```
 
-Engagement window (7d) and signal sources are owned by `engagement.py`; no
-config keys for them in v1.
+This is the file Pun opens to see the full plan.
 
-No new secrets in `.env.example`.
+### 3.3 Link surfaced note → build plan
 
----
+Append one line to the original surfaced note:
+```
+**Build plan:** [[{date}-{slug}-build-plan]]
+```
 
-## 7. Build Order
-
-1. **Verify `vec_index.rowid == embeddings.id`** against ingestion code. If
-   broken, migrate first. Nothing else starts until this is solid.
-2. **Retrieval helpers**: `get_week_dump()` and `knn_history()` in a new
-   `chatbot/services/retrieval.py`. Unit tests against fixture rows.
-3. **Surfacer**: `chatbot/services/second_brain.py` with `second_brain_loop()`
-   end-to-end, manually triggered. Run it once against real data, read the
-   output note, judge it.
-4. **Scheduler wiring**: register surfacer at 09:00 and existing
-   `run_engagement_checker` at 09:05 in `chatbot/services/scheduler.py`.
-   Add `python -m chatbot.services.second_brain run-once` CLI trigger.
-5. **`config.yaml` + `CLAUDE.md`** updated with the new module.
-
-`surfaced` table and `engagement.py` are already in place — no work needed.
-
-Step 3 is the validation point. If the first surfaced note is good, the
-plan worked. If it's shallow ("you had emails this week"), the prompt
-needs sharpening before adding more machinery.
+Requires a small `_append_note(note_path, line)` helper using the existing
+`StagingArea` path.
 
 ---
 
-## 8. Risks & What We Drop on the Floor
+## 4. Mermaid diagram (step 4)
 
-- **LLM anchors on the loudest source.** Mitigation: prompt explicitly
-  discourages recaps and prefers cross-source / dormant signals. If the
-  first week of output is consistently shallow, reintroduce structural
-  scaffolding as a *re-ranker* on the LLM's candidates, not a replacement.
-- **No structural guarantee of cross-source pattern matching.** Relying on
-  qwen2.5:14b to spot e.g. "calendar event + stale vault thread + diverging
-  commits" from labeled context. Acceptable risk for v1.
-- **Token budget will grow.** If raw activity exceeds ~12k tokens of input,
-  trim raw events to title + 200-char excerpt before injection.
-- **`thinking_sessions` infrastructure unused.** Could wrap each run as a
-  thinking session for full evidence trails. Defer to v2.
+No new tool needed. Obsidian renders Mermaid natively. The task description
+for step 4 explicitly tells the executor to output a ` ```mermaid ` block.
+`task_runner` saves the raw output as `.md`, which the consolidation step
+includes verbatim.
+
+The executor (Elvis chatbot agent) already knows Mermaid syntax from training.
+The only change is the task description (covered by §2.2 skeleton step 4).
 
 ---
 
-## 9. Deferred (not in this plan)
+## 5. Build order
 
-- Monthly summaries (defer until ≥8 weeks of weekly data)
-- `thinking_sessions` integration
-- Structural pattern re-ranker (only if v1 output is shallow)
-- Streamlit UI for browsing `surfaced` history
-- Wake-word / proactive voice surfacing
+1. Re-run vault indexer (no code change)
+2. `_is_build_plan` classifier + `_BUILD_SKELETON` in `second_brain.py`
+3. `_plan_build_tasks` replaces `_plan_tasks` when `_is_build_plan` is true
+4. `consolidate_run` in `task_runner.py`
+5. Write consolidated note to vault + link back from surfaced note
+6. Test end-to-end with helmet detection topic
+
+Only steps 2–3 change the planning path. Steps 4–5 are new but isolated to
+`task_runner.py` and the `_write_note` area. Existing `_plan_tasks` for
+non-build topics is untouched.
+
+---
+
+## 6. Out of scope
+
+- Actual image/SVG circuit diagrams (Mermaid text is the ceiling for now)
+- Automatic hardware ordering or price scraping beyond `web_search + fetch_url`
+- Wake-word / proactive notification when the plan is ready
+- Changes to the React UI (plan note appears in Obsidian, that's sufficient)

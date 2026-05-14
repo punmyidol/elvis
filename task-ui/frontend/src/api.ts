@@ -1,4 +1,4 @@
-import type { Run, RunSummary, CadStatusEvent, CadOutput, ThinkEvent, ThinkSessionSummary, ThinkSessionDetail, ThinkFile, ChatThread, ChatMessage, ChatEvent, WeeklySummary } from './types'
+import type { Run, RunSummary, CadStatusEvent, CadOutput, ThinkEvent, ThinkSessionSummary, ThinkSessionDetail, ThinkFile, ChatThread, ChatMessage, ChatEvent, WeeklySummary, BrainSurfacedRow, BrainStats, BrainTrendPoint, BrainNote, BrainEngagementRunResult, BrainSurfaceEvent } from './types'
 
 const BASE = '/api'
 
@@ -187,4 +187,41 @@ export async function* continueThinking(sessionId: string, input: string): Async
   })
   if (!res.ok) throw new Error(await res.text())
   yield* _sseStream<ThinkEvent>(res)
+}
+
+// Brain
+export async function fetchBrainSurfaced(limit = 200): Promise<BrainSurfacedRow[]> {
+  const res = await fetch(`${BASE}/brain/surfaced?limit=${limit}`)
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function fetchBrainStats(): Promise<BrainStats> {
+  const res = await fetch(`${BASE}/brain/stats`)
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function fetchBrainTrend(days = 30): Promise<BrainTrendPoint[]> {
+  const res = await fetch(`${BASE}/brain/trend?days=${days}`)
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function fetchBrainNote(path: string): Promise<BrainNote> {
+  const res = await fetch(`${BASE}/brain/note?path=${encodeURIComponent(path)}`)
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function runEngagementCheck(): Promise<BrainEngagementRunResult> {
+  const res = await fetch(`${BASE}/brain/run/engagement`, { method: 'POST' })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function* runSurfacing(): AsyncGenerator<BrainSurfaceEvent> {
+  const res = await fetch(`${BASE}/brain/run/surface`, { method: 'POST' })
+  if (!res.ok) throw new Error(await res.text())
+  yield* _sseStream<BrainSurfaceEvent>(res)
 }

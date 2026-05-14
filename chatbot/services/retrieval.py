@@ -166,6 +166,95 @@ def get_week_dump(
     }
 
 
+def get_recent_edits(days: int = 14, db_path: str = DB_PATH) -> list[dict]:
+    """Events rows where source IN ('obsidian','git') AND timestamp >= cutoff,
+    ordered by timestamp DESC. Excludes notes Elvis wrote itself (frontmatter
+    contains `"elvis":"surfaced"`). Returns the same dict shape as get_week_dump rows."""
+    cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+    with sqlite3.connect(db_path) as conn:
+        try:
+            rows = conn.execute(
+                "SELECT id, timestamp, title, content, author, meta, source_ref, source"
+                " FROM events"
+                " WHERE source IN ('obsidian', 'git')"
+                "   AND substr(replace(timestamp, 'T', ' '), 1, 19) >= ?"
+                "   AND (meta IS NULL OR meta NOT LIKE '%\"elvis\":\"surfaced\"%')"
+                " ORDER BY timestamp DESC",
+                (cutoff,),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return []
+    return [
+        {
+            "id": r[0],
+            "timestamp": r[1],
+            "title": r[2],
+            "content": r[3],
+            "author": r[4],
+            "meta": r[5],
+            "source_ref": r[6],
+            "source": r[7],
+        }
+        for r in rows
+    ]
+
+
+def get_engaged_surfacings(limit: int = 20, db_path: str = DB_PATH) -> list[dict]:
+    """Surfaced rows WHERE engaged=1 ORDER BY created_at DESC LIMIT ?."""
+    with sqlite3.connect(db_path) as conn:
+        try:
+            rows = conn.execute(
+                "SELECT id, topic, reason, created_at"
+                " FROM surfaced"
+                " WHERE engaged = 1"
+                " ORDER BY created_at DESC"
+                " LIMIT ?",
+                (limit,),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return []
+    return [
+        {"id": r[0], "topic": r[1], "reason": r[2], "created_at": r[3]}
+        for r in rows
+    ]
+
+
+def get_completed_tasks(
+    topic_slug: str | None = None, limit: int = 20, db_path: str = DB_PATH
+) -> list[dict]:
+    """Task_queue rows WHERE status='done'. If topic_slug given, scope to that
+    topic's surfaced_id chain via the surfaced_tasks join table."""
+    with sqlite3.connect(db_path) as conn:
+        try:
+            if topic_slug:
+                rows = conn.execute(
+                    "SELECT tq.id, tq.run_id, tq.task, tq.status, tq.created_at"
+                    " FROM task_queue tq"
+                    " JOIN surfaced_tasks st ON st.run_id = tq.run_id"
+                    " JOIN surfaced s ON s.id = st.surfaced_id"
+                    " WHERE tq.status = 'done'"
+                    "   AND lower(s.topic) LIKE lower(?)"
+                    " ORDER BY tq.created_at DESC"
+                    " LIMIT ?",
+                    (f"%{topic_slug}%", limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT id, run_id, task, status, created_at"
+                    " FROM task_queue"
+                    " WHERE status = 'done'"
+                    " ORDER BY created_at DESC"
+                    " LIMIT ?",
+                    (limit,),
+                ).fetchall()
+        except sqlite3.OperationalError:
+            return []
+    return [
+        {"id": r[0], "run_id": r[1], "task": r[2], "status": r[3], "created_at": r[4]}
+        for r in rows
+    ]
+
+
 def knn_history(
     query: str,
     top_k: int = 6,

@@ -86,4 +86,15 @@ def init_db(db_path: str = DB_PATH):
             conn.execute("ALTER TABLE surfaced ADD COLUMN reason TEXT")
         if "obsidian_note_path" not in existing:
             conn.execute("ALTER TABLE surfaced ADD COLUMN obsidian_note_path TEXT")
+        if "full_context_json" not in existing:
+            conn.execute("ALTER TABLE surfaced ADD COLUMN full_context_json TEXT")
+        conn.commit()
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS surfaced_tasks (
+                surfaced_id INTEGER NOT NULL REFERENCES surfaced(id),
+                run_id      TEXT    NOT NULL,
+                created_at  TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (surfaced_id, run_id)
+            )
+        """)
         conn.commit()

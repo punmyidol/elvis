@@ -23,7 +23,7 @@ from pydantic import BaseModel
 
 from agent.task_runner import RUNS_DIR, list_runs, resume_run, start_run
 from agent.cad_tool import generate_cad_stream
-from core.config import CAD_OUTPUT_DIR, CAD_SCRIPTS_DIR, OLLAMA_MODEL, OLLAMA_BASE_URL
+from core.config import CAD_OUTPUT_DIR, CAD_SCRIPTS_DIR, OLLAMA_MODEL, OLLAMA_BASE_URL, DB_PATH as _BRAIN_DB
 
 # DB that the chatbot writes to (resolved relative to this file so it works
 # regardless of CWD when the server is started)
@@ -712,6 +712,220 @@ async def chat_send(body: ChatRequest):
             event = await loop.run_in_executor(None, q.get)
             if event is None:
                 yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                break
+            yield f"data: {json.dumps(event)}\n\n"
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Brain (second-brain surfacing) endpoints
+# ---------------------------------------------------------------------------
+
+
+def _brain_rows(db_path: str, limit: int | None = None) -> list[dict]:
+    sql = (
+        "SELECT id, topic, source_signals, reason, obsidian_note_path,"
+        " engaged, created_at FROM surfaced ORDER BY created_at DESC"
+    )
+    if limit is not None:
+        sql += f" LIMIT {int(limit)}"
+    try:
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(sql).fetchall()
+    except sqlite3.OperationalError:
+        return []
+    result: list[dict] = []
+    for r in rows:
+        try:
+            signals = json.loads(r["source_signals"]) if r["source_signals"] else []
+        except json.JSONDecodeError:
+            signals = []
+        result.append({
+            "id": r["id"],
+            "topic": r["topic"],
+            "source_signals": signals,
+            "reason": r["reason"],
+            "obsidian_note_path": r["obsidian_note_path"],
+            "engaged": bool(r["engaged"]),
+            "created_at": r["created_at"],
+        })
+    return result
+
+
+@app.get("/api/brain/surfaced")
+def brain_surfaced(limit: int = 200):
+    return _brain_rows(_BRAIN_DB, limit=limit)
+
+
+@app.get("/api/brain/stats")
+def brain_stats():
+    try:
+        with sqlite3.connect(_BRAIN_DB) as conn:
+            conn.row_factory = sqlite3.Row
+
+            def _bucket(where: str) -> dict:
+                row = conn.execute(
+                    f"SELECT COUNT(*) AS total, COALESCE(SUM(engaged), 0) AS engaged"
+                    f" FROM surfaced {where}"
+                ).fetchone()
+                total = row["total"] or 0
+                engaged = row["engaged"] or 0
+                return {
+                    "total": total,
+                    "engaged": engaged,
+                    "rate": (engaged / total) if total else 0.0,
+                }
+
+            all_time = _bucket("")
+            last_30d = _bucket("WHERE created_at >= datetime('now', '-30 days')")
+            last_7d = _bucket("WHERE created_at >= datetime('now', '-7 days')")
+
+            rows = conn.execute(
+                "SELECT source_signals, engaged FROM surfaced"
+            ).fetchall()
+    except sqlite3.OperationalError:
+        return {
+            "all_time": {"total": 0, "engaged": 0, "rate": 0.0},
+            "last_30d": {"total": 0, "engaged": 0, "rate": 0.0},
+            "last_7d": {"total": 0, "engaged": 0, "rate": 0.0},
+            "by_signal": {},
+        }
+
+    by_signal: dict[str, dict[str, int]] = {}
+    for r in rows:
+        try:
+            signals = json.loads(r["source_signals"]) if r["source_signals"] else []
+        except json.JSONDecodeError:
+            signals = []
+        for s in signals:
+            bucket = by_signal.setdefault(s, {"total": 0, "engaged": 0})
+            bucket["total"] += 1
+            if r["engaged"]:
+                bucket["engaged"] += 1
+    by_signal_out = {
+        s: {**b, "rate": (b["engaged"] / b["total"]) if b["total"] else 0.0}
+        for s, b in by_signal.items()
+    }
+    return {
+        "all_time": all_time,
+        "last_30d": last_30d,
+        "last_7d": last_7d,
+        "by_signal": by_signal_out,
+    }
+
+
+@app.get("/api/brain/trend")
+def brain_trend(days: int = 30):
+    days = max(1, min(days, 365))
+    try:
+        with sqlite3.connect(_BRAIN_DB) as conn:
+            rows = conn.execute(
+                "SELECT date(created_at) AS day,"
+                " COUNT(*) AS surfaced,"
+                " COALESCE(SUM(engaged), 0) AS engaged"
+                " FROM surfaced"
+                " WHERE created_at >= datetime('now', ?)"
+                " GROUP BY day"
+                " ORDER BY day ASC",
+                (f"-{days} days",),
+            ).fetchall()
+    except sqlite3.OperationalError:
+        return []
+    return [
+        {"day": day, "surfaced": surfaced, "engaged": engaged}
+        for day, surfaced, engaged in rows
+    ]
+
+
+@app.get("/api/brain/note")
+def brain_note(path: str):
+    from services.obsidian import VAULT_ROOT
+
+    vault_root = Path(VAULT_ROOT).resolve()
+    candidate = (vault_root / path).resolve()
+    try:
+        candidate.relative_to(vault_root)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="path escapes vault root")
+    if not candidate.exists() or not candidate.is_file():
+        raise HTTPException(status_code=404, detail="note not found")
+    try:
+        content = candidate.read_text(encoding="utf-8")
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"failed to read note: {e}")
+    return {"path": path, "content": content}
+
+
+@app.post("/api/brain/run/engagement")
+def brain_run_engagement():
+    from core.engagement import run_engagement_checker
+
+    with sqlite3.connect(_BRAIN_DB) as conn:
+        before = conn.execute(
+            "SELECT COUNT(*) FROM surfaced WHERE engaged = 1"
+        ).fetchone()[0]
+    try:
+        run_engagement_checker(_BRAIN_DB)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"engagement checker failed: {e}")
+    with sqlite3.connect(_BRAIN_DB) as conn:
+        after = conn.execute(
+            "SELECT COUNT(*) FROM surfaced WHERE engaged = 1"
+        ).fetchone()[0]
+    return {"newly_engaged": max(0, after - before), "total_engaged": after}
+
+
+@app.post("/api/brain/run/surface")
+async def brain_run_surface():
+    q: queue.Queue[dict | None] = queue.Queue()
+
+    def worker():
+        import contextlib
+        import io
+
+        class _TeeWriter(io.TextIOBase):
+            def __init__(self) -> None:
+                self._buf = ""
+
+            def write(self, s: str) -> int:
+                self._buf += s
+                while "\n" in self._buf:
+                    line, self._buf = self._buf.split("\n", 1)
+                    if line:
+                        q.put({"type": "log", "message": line})
+                return len(s)
+
+            def flush(self) -> None:
+                if self._buf:
+                    q.put({"type": "log", "message": self._buf})
+                    self._buf = ""
+
+        try:
+            from services.second_brain import second_brain_loop
+
+            tee = _TeeWriter()
+            with contextlib.redirect_stdout(tee):
+                written = second_brain_loop(_BRAIN_DB)
+            tee.flush()
+            q.put({"type": "done", "written": written})
+        except Exception as e:
+            q.put({"type": "error", "message": str(e)})
+        finally:
+            q.put(None)
+
+    threading.Thread(target=worker, daemon=True).start()
+
+    async def stream():
+        loop = asyncio.get_event_loop()
+        while True:
+            event = await loop.run_in_executor(None, q.get)
+            if event is None:
                 break
             yield f"data: {json.dumps(event)}\n\n"
 
