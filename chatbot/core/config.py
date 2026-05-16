@@ -67,8 +67,8 @@ DOCUMENTS_DIR = os.getenv(
 # ---------------------------------------------------------------------------
 # RAG / Vector store
 # ---------------------------------------------------------------------------
-EMBED_MODEL = os.getenv("ELVIS_EMBED_MODEL", "nomic-embed-text")
-EMBED_DIMENSIONS = 768
+EMBED_MODEL = os.getenv("ELVIS_EMBED_MODEL", "mxbai-embed-large")
+EMBED_DIMENSIONS = 1024
 VECTOR_TOP_K = 5
 DOCUMENT_CHUNK_SIZE = 400
 DOCUMENT_CHUNK_OVERLAP = 50

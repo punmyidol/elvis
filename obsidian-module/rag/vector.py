@@ -16,6 +16,7 @@ DB: chatbot/elvis.db (path via ELVIS_DB_PATH env var)
 
 import json as _json
 import os
+import re
 import sqlite3
 import struct
 from typing import Optional
@@ -25,12 +26,12 @@ import sqlite_vec
 
 from config import OLLAMA_BASE_URL
 
-EMBED_MODEL = "nomic-embed-text"
-VECTOR_DIM = 768
+EMBED_MODEL = "mxbai-embed-large"
+VECTOR_DIM = 1024
 CHUNK_SIZE = 400
 CHUNK_OVERLAP = 50
 DISTANCE_THRESHOLD = 1.5
-TOP_K = 5
+TOP_K = 10
 
 _DEFAULT_DB = os.getenv(
     "ELVIS_DB_PATH",
@@ -56,11 +57,56 @@ def _chunk(text: str) -> list[str]:
     return chunks
 
 
-_MAX_EMBED_CHARS = 2000
+_URL_RE = re.compile(r"https?://\S+")
+_WHITESPACE_RE = re.compile(r"[ \t]{2,}")
+_TABLE_ROW_RE = re.compile(r"^\s*\|", re.MULTILINE)
+_SEP_CELL_RE = re.compile(r"^[-:\s]+$")
+_MAX_EMBED_CHARS = 1200
 
-def _embed(text: str) -> list[float]:
+
+def _table_to_prose(text: str) -> str:
+    """Convert markdown tables to prose rows: | A | B | -> 'Header1: A, Header2: B'."""
+    lines = text.splitlines(keepends=True)
+    out = []
+    i = 0
+    while i < len(lines):
+        if not lines[i].strip().startswith("|"):
+            out.append(lines[i])
+            i += 1
+            continue
+        # Collect contiguous table lines
+        block = []
+        while i < len(lines) and lines[i].strip().startswith("|"):
+            block.append(lines[i])
+            i += 1
+        if not block:
+            continue
+        headers = [c.strip().strip("*") for c in block[0].split("|")[1:-1]]
+        for row in block[1:]:
+            cells = [c.strip() for c in row.split("|")[1:-1]]
+            if all(_SEP_CELL_RE.match(c) for c in cells if c):
+                continue  # separator row
+            pairs = [f"{h}: {c}" for h, c in zip(headers, cells) if h and c]
+            if pairs:
+                out.append(", ".join(pairs) + "\n")
+    return "".join(out)
+
+
+def _clean_for_embed(text: str) -> str:
+    """Convert tables to prose, strip URLs, collapse whitespace."""
+    text = _table_to_prose(text)
+    text = _URL_RE.sub("", text)
+    text = _WHITESPACE_RE.sub(" ", text)
+    return text.strip()
+
+_QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
+
+def _embed(text: str, is_query: bool = False) -> list[float]:
     client = ollama.Client(host=OLLAMA_BASE_URL)
-    response = client.embed(model=EMBED_MODEL, input=text[:_MAX_EMBED_CHARS])
+    clean = _clean_for_embed(text)[:_MAX_EMBED_CHARS] or text[:_MAX_EMBED_CHARS]
+    if is_query:
+        clean = _QUERY_PREFIX + clean
+    response = client.embed(model=EMBED_MODEL, input=clean)
     return response.embeddings[0]
 
 
@@ -115,11 +161,14 @@ def upsert_obsidian_chunks(
     ts_iso = _dt.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S") if mtime else None
 
     # Phase 1: embed all chunks outside DB lock
+    # Prepend title + path so embeddings are grounded to the note's subject,
+    # not just chunk text (helps terse tables / spec lists rank fairly).
+    embed_prefix = f"{title}\n{note_path}\n"
     embedded = []
     for i, chunk in enumerate(chunks):
         source_ref = f"{note_path}::chunk_{i}"
         try:
-            vector = _embed(chunk)
+            vector = _embed(embed_prefix + chunk)
         except Exception as e:
             print(f"[ObsidianVec] Embed failed for {source_ref!r}: {e}")
             continue
@@ -202,7 +251,7 @@ def search_obsidian_vectors(
     db_path: str = _DEFAULT_DB,
 ) -> list[dict]:
     try:
-        vector = _embed(query)
+        vector = _embed(query, is_query=True)
     except Exception as e:
         print(f"[ObsidianVec] Query embed failed: {e}")
         return []
@@ -218,6 +267,7 @@ def search_obsidian_vectors(
               AND k = ?
               AND e.source = 'obsidian'
               AND em.level = 'raw'
+              AND e.source_ref NOT LIKE 'elvis-surfaced/%'
             ORDER BY v.distance
         """, (packed, top_k * 4)).fetchall()
 
@@ -238,8 +288,45 @@ def search_obsidian_vectors(
             "tags": tags,
             "content": content,
             "distance": dist,
+            "match_type": "knn",
         })
         if len(results) >= top_k:
             break
+
+    # Hybrid fallback: path-keyword search for notes missed by KNN
+    # (table/URL-heavy notes embed poorly but have descriptive paths)
+    found_paths = {r["note_path"] for r in results}
+    keywords = [w for w in re.sub(r"[^\w\s]", " ", query).split() if len(w) > 3]
+    if keywords:
+        with _conn(db_path) as conn:
+            for kw in keywords:
+                path_rows = conn.execute(
+                    "SELECT e.source_ref, e.title, e.meta, em.summary"
+                    " FROM events e JOIN embeddings em ON em.event_id = e.id"
+                    " WHERE e.source = 'obsidian' AND em.level = 'raw'"
+                    "   AND e.source_ref NOT LIKE 'elvis-surfaced/%'"
+                    "   AND e.source_ref LIKE ?"
+                    " ORDER BY e.source_ref LIMIT 5",
+                    (f"%{kw}%",),
+                ).fetchall()
+                for source_ref, title, meta_json, content in path_rows:
+                    note_path = source_ref.split("::chunk_")[0]
+                    if note_path in found_paths:
+                        continue
+                    found_paths.add(note_path)
+                    tags = []
+                    if meta_json:
+                        try:
+                            tags = _json.loads(meta_json).get("tags", [])
+                        except Exception:
+                            pass
+                    results.append({
+                        "note_path": note_path,
+                        "title": title,
+                        "tags": tags,
+                        "content": content,
+                        "distance": None,
+                        "match_type": "path",
+                    })
 
     return results

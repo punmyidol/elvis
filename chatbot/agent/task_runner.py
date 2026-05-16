@@ -98,15 +98,21 @@ def resume_run(run_id: str) -> Generator[str, None, None]:
         idx = task_info["index"]
         yield f"[{idx}/{n}] Starting: {task_info['task']}"
 
+        _SUMMARY_CAP = 100
         task_summary = "\n".join(
-            f"  {t['index']}. {t['task']}  "
-            f"[{'current' if t['index'] == idx else t['status']}]"
+            "  {idx}. {label}  [{status}]".format(
+                idx=t["index"],
+                label=(t["task"][:_SUMMARY_CAP] + "…" if len(t["task"]) > _SUMMARY_CAP else t["task"]),
+                status="current" if t["index"] == idx else t["status"],
+            )
             for t in tasks
         )
 
+        _MAX_PREV_CHARS = 1500
         prev_block = ""
         for i, content in sorted(previous_results.items()):
-            prev_block += f"\n--- Task {i} result ---\n{content}\n"
+            snippet = content[:_MAX_PREV_CHARS] + ("…" if len(content) > _MAX_PREV_CHARS else "")
+            prev_block += f"\n--- Task {i} result (truncated) ---\n{snippet}\n"
 
         prompt = (
             f"You are Elvis executing task {idx} of {n}.\n\n"

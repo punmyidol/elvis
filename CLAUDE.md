@@ -11,6 +11,7 @@ Single-user personal assistant for MacBook M3. Email, calendar, news, Obsidian n
 - [ ] config.yaml updated if new settings added
 - [ ] .env.example updated if new secrets added
 - [ ] requirements.txt updated + versions pinned
+- [ ] No sentinel values — never overload a field with a fake value to smuggle extra meaning; add a dedicated field instead
 
 ### Stack
 - **LLM**: `qwen2.5:7b` via Ollama (`ELVIS_MODEL` env override)

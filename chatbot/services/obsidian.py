@@ -29,7 +29,7 @@ from config import VAULT_ROOT
 _STAGING_DIR = os.path.join(_OBS, ".staging")
 
 
-def search_obsidian_logic(query: str, top_k: int = 5) -> str:
+def search_obsidian_logic(query: str, top_k: int = 10) -> str:
     from core.config import DB_PATH
     results = search_obsidian_vectors(query, top_k=top_k, db_path=DB_PATH)
     if not results:
@@ -37,8 +37,12 @@ def search_obsidian_logic(query: str, top_k: int = 5) -> str:
     parts = []
     for r in results:
         tags_str = ", ".join(r["tags"]) if r["tags"] else "none"
+        if r["match_type"] == "path":
+            match_str = "path-match"
+        else:
+            match_str = f"similarity={r['distance']:.3f}"
         parts.append(
-            f"[Note: {r['note_path']}]\n"
+            f"[Note: {r['note_path']} | {match_str}]\n"
             f"Title: {r['title']} | Tags: {tags_str}\n"
             f"{r['content']}"
         )

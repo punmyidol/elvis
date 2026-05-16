@@ -292,9 +292,11 @@ def _format_full_context(fc: dict) -> str:
     if vault_knn:
         titles = []
         for h in vault_knn[:5]:
+            src = h.get("source", "")
             title = h.get("source_ref", "").split("/")[-1].replace(".md", "")
             excerpt = (h.get("content") or "")[:80].replace("\n", " ")
-            titles.append(f"  • {title} — {excerpt}" if excerpt else f"  • {title}")
+            label = f"[{src}] {title}" if src else title
+            titles.append(f"  • {label} — {excerpt}" if excerpt else f"  • {label}")
         lines.append("- Vault on this topic:\n" + "\n".join(titles))
 
     recent = fc.get("recent_edits") or []
@@ -497,12 +499,14 @@ def _is_build_plan(item: dict) -> bool:
 
 _BUILD_SKELETON = [
     ("Identify requirements",
-     "Search vault and emails for all notes about this project. Extract key "
-     "requirements as a bullet list covering: physical constraints, environment "
-     "(indoor/outdoor/standalone), power supply, connectivity, and budget."),
+     "Search vault for all notes about this project — including any shopping lists, "
+     "hardware lists, or already-purchased component notes. Extract: (1) already-owned "
+     "components with their specs and prices, (2) physical constraints, environment, "
+     "power supply, connectivity, and budget requirements. List owned components first."),
     ("Identify hardware options",
-     "Web search for hardware components that satisfy the requirements. "
-     "List 1-3 candidate parts for each requirement category."),
+     "Using the already-owned components found in step 1 as the baseline, web search "
+     "only for components that are still missing or need an upgrade. Do not suggest "
+     "replacements for components already purchased. List 1-3 candidate parts per gap."),
     ("Compare hardware prices",
      "For each candidate part, fetch current prices and product page links. "
      "Output a markdown table with columns: Component | Option | Price | Link."),
@@ -536,9 +540,30 @@ def _plan_build_tasks(
     llm: ChatOllama,
 ) -> list[dict]:
     """Fill the 6-step build skeleton with project-specific descriptions."""
+    # Pre-search vault before planning so step 1 gets the real note content
+    # injected directly — we cannot trust the agent to pick the right query.
+    from rag.vector import search_obsidian_vectors
+    topic_query = item["topic"].replace("-", " ")
+    vault_pre = search_obsidian_vectors(topic_query, top_k=5, db_path=DB_PATH)
+    vault_inject_lines = []
+    if vault_pre:
+        vault_inject_lines.append(
+            "\n\nVault notes already retrieved (use these directly, "
+            "no need to re-search for them):"
+        )
+        for h in vault_pre:
+            match_info = "path-match" if h["match_type"] == "path" else f"dist={h['distance']:.3f}"
+            vault_inject_lines.append(
+                f"\n[{h['note_path']} | {match_info}]\n{h['content'][:500]}"
+            )
+    vault_inject = "\n".join(vault_inject_lines)
+
     fc = full_context
     vault_briefs = "; ".join(
-        h.get("source_ref", "").split("/")[-1].replace(".md", "")
+        "[{src}] {ref}".format(
+            src=h.get("source", ""),
+            ref=h.get("source_ref", "").split("/")[-1].replace(".md", ""),
+        )
         for h in (fc.get("vault_knn") or [])[:5]
     )
     completed_briefs = "; ".join(
@@ -580,6 +605,16 @@ def _plan_build_tasks(
                     "title":       str(s["title"]),
                     "description": str(s["description"]),
                 })
+        # Inject pre-searched vault content into steps 1 and 2.
+        # Step 1: full notes so it can extract the owned component list.
+        # Step 2: same reference so it knows what NOT to replace when searching
+        # for gaps — qwen may not carry step 1's truncated output forward.
+        if valid and vault_inject:
+            valid[0]["description"] = valid[0]["description"] + vault_inject
+            if len(valid) > 1:
+                valid[1]["description"] = (
+                    valid[1]["description"] + vault_inject
+                )
         return valid
     except (json.JSONDecodeError, ValueError):
         print(f"[SecondBrain] _plan_build_tasks: failed to parse: {raw[:200]}")
