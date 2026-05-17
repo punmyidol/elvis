@@ -20,7 +20,7 @@ Single-user personal assistant for MacBook M3. Email, calendar, news, Obsidian n
 - **DB**: single `elvis.db` at repo root (`ELVIS_DB_PATH` env override)
 - **Scheduler**: APScheduler (midnight news refresh, 30-min calendar sync)
 - **Voice**: mlx-whisper STT + macOS `say` TTS
-- **Frontend**: Streamlit (`chatbot/main.py`)
+- **Frontend**: React/TS (`task-ui/frontend/`) + FastAPI (`task-ui/server.py`)
 
 ---
 
@@ -33,7 +33,7 @@ Single-user personal assistant for MacBook M3. Email, calendar, news, Obsidian n
 
 | Module | Path | Purpose |
 |---|---|---|
-| Main agent | `chatbot/` | LangGraph workflow, tools, memory, Streamlit UI |
+| Main agent | `chatbot/` | LangGraph workflow, tools, memory |
 | Gmail | `gmail-module/` | OAuth2 fetch → embed → KNN search in `elvis.db` |
 | News | `news-module/` | RSS fetch → embed → KNN search in `elvis.db` |
 | Calendar | `calendar-module/` | iCloud CalDAV CRUD — sync/get/create/update/delete |
@@ -113,7 +113,6 @@ mem0 backend with Ollama LLM + ChromaDB vector store. Runs ADD/UPDATE/DELETE/NOO
 ### Entry Points
 | Command | Purpose |
 |---|---|
-| `streamlit run chatbot/main.py` | Streamlit chat UI |
 | `python cli_chat.py` | Terminal chat |
 | `python voice_chat.py` | Voice (mic → Whisper → Elvis → TTS) |
 | `python test_stt.py` | Standalone mic/STT test loop |
@@ -133,4 +132,4 @@ Tables: `member_memories`, `shared_memories`, `news_cache`, `calendar_cache`, ve
 - Staging UI for Obsidian writes
 - Wake word detection (push-to-talk is current default)
 - Proactive reminders via APScheduler
-- React/TS UI (Streamlit is temporary)
+- React/TS UI feature parity with cli_chat.py

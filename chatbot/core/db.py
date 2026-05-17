@@ -29,9 +29,6 @@ def init_db(db_path: str = DB_PATH):
     init_vector_table(db_path)
     init_obsidian_tables(db_path)
 
-    from services.thinking import init_thinking_tables
-    init_thinking_tables(db_path)
-
     with sqlite3.connect(db_path) as conn:
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS news_cache (

@@ -25,17 +25,6 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from core.config import DB_PATH, OLLAMA_MODEL, OLLAMA_BASE_URL, CHATBOT_NAME, MAX_CONTEXT_TOKENS, MAX_RELEVANT_MEMORIES
 from agent.tools import ELVIS_TOOLS
 from memory.elvis_memory import recall, remember as mem_remember
-from agent.thinking_agent import start_session as _thinking_start, continue_session as _thinking_continue
-
-# thread_id → active thinking session_id
-_active_thinking_sessions: dict[str, str] = {}
-
-_THINKING_START_KEYWORDS = {
-    "think about", "plan out", "research", "figure out",
-    "think through", "analyse", "analyze", "investigate",
-}
-_THINKING_STOP_KEYWORDS = {"stop", "that's enough", "done thinking", "finish", "quit"}
-_THINKING_CONTINUE_KEYWORDS = {"keep going", "continue", "go on", "next", "proceed"}
 
 
 # ---------------------------------------------------------------------------
@@ -78,29 +67,6 @@ def _compile_workflow(llm, checkpointer):
             (_extract_text(m.content) for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
             "",
         )
-        lower = latest_human.lower()
-
-        # --- Thinking agent routing (skipped for task-runner threads) ---
-        if not thread_id.startswith("run-") and thread_id in _active_thinking_sessions:
-            session_id = _active_thinking_sessions[thread_id]
-            from langchain_ollama import ChatOllama as _Ollama
-            thinking_llm = _Ollama(
-                model=OLLAMA_MODEL, base_url=OLLAMA_BASE_URL, temperature=0.5
-            )
-            checkpoint, is_done = _thinking_continue(session_id, latest_human, thinking_llm)
-            if is_done:
-                del _active_thinking_sessions[thread_id]
-            return {"messages": [_AIMessage(content=checkpoint)]}
-
-        if not thread_id.startswith("run-") and any(kw in lower for kw in _THINKING_START_KEYWORDS):
-            from langchain_ollama import ChatOllama as _Ollama
-            thinking_llm = _Ollama(
-                model=OLLAMA_MODEL, base_url=OLLAMA_BASE_URL, temperature=0.5
-            )
-            session_id, checkpoint = _thinking_start(latest_human, thinking_llm, thread_id)
-            _active_thinking_sessions[thread_id] = session_id
-            return {"messages": [_AIMessage(content=checkpoint)]}
-        # --- End thinking agent routing ---
 
         mems = recall(latest_human[:500], limit=MAX_RELEVANT_MEMORIES)
         system_prompt = _build_system_prompt(mems)

@@ -3,14 +3,14 @@ import RunForm from './components/RunForm'
 import RunList from './components/RunList'
 import RunDetail from './components/RunDetail'
 import CadView from './components/CadView'
-import ThinkView from './components/ThinkView'
 import ChatView from './components/ChatView'
 import WeeklyView from './components/WeeklyView'
 import BrainView from './components/BrainView'
+import NotesView from './components/NotesView'
 import { fetchRuns } from './api'
 import type { RunSummary } from './types'
 
-type View = 'tasks' | 'cad' | 'think' | 'chat' | 'weekly' | 'brain'
+type View = 'tasks' | 'cad' | 'chat' | 'weekly' | 'brain' | 'notes'
 
 interface ActiveRun {
   runId: string
@@ -20,10 +20,10 @@ interface ActiveRun {
 const NAV_LABELS: Record<View, string> = {
   tasks: 'Tasks',
   cad: 'CAD',
-  think: 'Think',
   chat: 'Chat',
   weekly: 'Weekly',
   brain: 'Brain',
+  notes: 'Notes',
 }
 
 export default function App() {
@@ -53,7 +53,7 @@ export default function App() {
       <header className="border-b border-gray-800 px-6 py-4 flex items-center justify-between">
         <h1 className="text-base font-semibold tracking-tight text-white">Elvis</h1>
         <nav className="flex gap-1">
-          {(['tasks', 'cad', 'think', 'chat', 'weekly', 'brain'] as View[]).map(v => (
+          {(['tasks', 'cad', 'chat', 'weekly', 'brain', 'notes'] as View[]).map(v => (
             <button
               key={v}
               onClick={() => handleViewChange(v)}
@@ -69,11 +69,11 @@ export default function App() {
         </nav>
       </header>
 
-      <main className={`${isChat ? 'max-w-5xl' : 'max-w-3xl'} mx-auto px-6 py-8 ${isChat ? '' : 'space-y-10'}`}>
-        {view === 'chat' ? (
+      <main className={`${view === 'notes' ? 'max-w-[1400px]' : isChat ? 'max-w-5xl' : 'max-w-3xl'} mx-auto px-6 py-4 ${isChat || view === 'notes' ? '' : 'space-y-10'}`}>
+        {view === 'notes' ? (
+          <NotesView />
+        ) : view === 'chat' ? (
           <ChatView />
-        ) : view === 'think' ? (
-          <ThinkView />
         ) : view === 'cad' ? (
           <CadView />
         ) : view === 'weekly' ? (

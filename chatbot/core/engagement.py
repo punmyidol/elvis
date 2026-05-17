@@ -59,6 +59,7 @@ def _check_obsidian(keywords: list[str], after: datetime, db_path: str) -> bool:
                       ELSE e.source_ref
                   END
                 WHERE e.source = 'obsidian'
+                  AND e.source_ref NOT LIKE 'elvis-surfaced/%'
                   AND v.modified_at > ?
                 """,
                 (vault_prefix, after_ts),
@@ -117,6 +118,8 @@ def _check_obsidian_vector(topic: str, after: datetime, db_path: str) -> bool:
     try:
         with sqlite3.connect(db_path) as conn:
             for r in results:
+                if "/elvis-surfaced/" in r["note_path"]:
+                    continue
                 row = conn.execute(
                     "SELECT modified_at FROM vault_index_meta WHERE filepath = ?",
                     (r["note_path"],),

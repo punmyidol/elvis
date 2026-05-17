@@ -43,47 +43,6 @@ export interface CadOutput {
   created_at: string
 }
 
-// Thinking agent
-export type ThinkEventType = 'layer' | 'tasks' | 'checkpoint' | 'intent' | 'done' | 'error'
-
-export interface ThinkTask {
-  id: string
-  description: string
-  type: string
-  status: string
-  iteration_created: number
-  depends_on: string[]
-}
-
-export interface ThinkEvent {
-  type: ThinkEventType
-  message?: string
-  text?: string
-  session_id?: string
-  is_done?: boolean
-  intent?: string
-  tasks?: ThinkTask[]
-}
-
-export interface ThinkSessionSummary {
-  session_id: string
-  prompt: string
-  status: string
-  iteration: number
-  created_at: string
-}
-
-export interface ThinkSessionDetail extends ThinkSessionSummary {
-  tasks: ThinkTask[]
-  latest_checkpoint: string | null
-}
-
-export interface ThinkFile {
-  filename: string
-  size: number
-  is_checkpoint: boolean
-}
-
 // Chat
 export interface ChatThread {
   thread_id: string
@@ -157,3 +116,18 @@ export type BrainSurfaceEvent =
   | { type: 'log'; message: string }
   | { type: 'done'; written: number }
   | { type: 'error'; message: string }
+
+// Notes (elvis-surfaced editor)
+export interface SurfacedNote {
+  filename: string
+  path: string
+  title: string
+  created: string
+  source_signals: string[]
+}
+
+export interface NotesChatEvent {
+  type: 'chunk' | 'done' | 'error'
+  text?: string
+  message?: string
+}

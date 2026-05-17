@@ -32,10 +32,6 @@ _CAD_DB = os.getenv(
     str(Path(__file__).parent.parent / "chatbot" / "elvis.db"),
 )
 
-# Ensure thinking tables exist on startup
-from services.thinking import init_thinking_tables as _init_thinking
-_init_thinking(_CAD_DB)
-
 # Chat thread registry
 def _init_chat_tables(db_path: str) -> None:
     with sqlite3.connect(db_path) as conn:
@@ -277,309 +273,6 @@ def weekly_summaries():
 
 
 # ---------------------------------------------------------------------------
-# Thinking agent endpoints
-# ---------------------------------------------------------------------------
-
-_THINK_DB = _CAD_DB  # same elvis.db
-
-_STAGING_ROOT = Path(__file__).resolve().parent.parent / "obsidian-module" / ".staging" / "thinking"
-
-
-class ThinkRequest(BaseModel):
-    prompt: str
-
-
-# GET /api/think/sessions must be declared BEFORE /api/think/{session_id}
-# or FastAPI will match "sessions" as a session_id.
-
-@app.get("/api/think/sessions")
-def think_sessions():
-    try:
-        with sqlite3.connect(_THINK_DB) as conn:
-            conn.row_factory = sqlite3.Row
-            rows = conn.execute(
-                "SELECT session_id, prompt, status, iteration, created_at "
-                "FROM thinking_sessions ORDER BY created_at DESC LIMIT 50"
-            ).fetchall()
-    except sqlite3.OperationalError:
-        return []
-    return [dict(r) for r in rows]
-
-
-@app.get("/api/think/{session_id}/files")
-def think_list_files(session_id: str):
-    session_dir = _STAGING_ROOT / session_id
-    if not session_dir.exists():
-        return []
-    files = []
-    for f in sorted(session_dir.iterdir()):
-        if f.suffix == ".md" and f.is_file():
-            files.append({
-                "filename": f.name,
-                "size": f.stat().st_size,
-                "is_checkpoint": f.name.startswith("checkpoint_"),
-            })
-    files.sort(key=lambda x: (x["is_checkpoint"], x["filename"]))
-    return files
-
-
-@app.get("/api/think/{session_id}/files/{filename}")
-def think_get_file(session_id: str, filename: str):
-    if "/" in filename or "\\" in filename or ".." in filename:
-        raise HTTPException(status_code=400, detail="invalid filename")
-    f = _STAGING_ROOT / session_id / filename
-    if not f.exists() or not f.is_file():
-        raise HTTPException(status_code=404, detail="file not found")
-    return {"filename": filename, "content": f.read_text()}
-
-
-@app.get("/api/think/{session_id}")
-def think_session_detail(session_id: str):
-    try:
-        with sqlite3.connect(_THINK_DB) as conn:
-            conn.row_factory = sqlite3.Row
-            session = conn.execute(
-                "SELECT session_id, prompt, status, iteration, created_at "
-                "FROM thinking_sessions WHERE session_id = ?",
-                (session_id,),
-            ).fetchone()
-            if session is None:
-                raise HTTPException(status_code=404, detail="session not found")
-
-            tasks = conn.execute(
-                "SELECT id, description, type, status, iteration_created, depends_on "
-                "FROM thinking_tasks WHERE session_id = ? ORDER BY iteration_created, id",
-                (session_id,),
-            ).fetchall()
-
-            checkpoint = conn.execute(
-                "SELECT summary FROM thinking_checkpoints "
-                "WHERE session_id = ? ORDER BY iteration DESC LIMIT 1",
-                (session_id,),
-            ).fetchone()
-
-    except sqlite3.OperationalError as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-    import json as _json
-    return {
-        **dict(session),
-        "tasks": [
-            {**dict(t), "depends_on": _json.loads(t["depends_on"] or "[]")}
-            for t in tasks
-        ],
-        "latest_checkpoint": checkpoint["summary"] if checkpoint else None,
-    }
-
-
-class ThinkContinueRequest(BaseModel):
-    input: str
-
-
-def _make_thinking_llm():
-    from langchain_ollama import ChatOllama
-    return ChatOllama(model=OLLAMA_MODEL, base_url=OLLAMA_BASE_URL, temperature=0.5)
-
-
-@app.post("/api/think")
-async def think_start(body: ThinkRequest):
-    if not body.prompt.strip():
-        raise HTTPException(status_code=400, detail="prompt must be non-empty")
-
-    q: queue.Queue[dict | None] = queue.Queue()
-
-    def worker():
-        try:
-            import uuid
-            from agent.thinking_agent import (
-                ThinkingState,
-                _detect_location,
-                _task_to_dict,
-                layer1_decompose,
-                layer2_critique,
-                layer3_execute,
-                layer4_verify,
-                layer5_checkpoint,
-            )
-            from services.thinking import ThinkingDB, create_session_vec_tables
-
-            llm = _make_thinking_llm()
-            session_id = uuid.uuid4().hex[:12]
-            db = ThinkingDB(_THINK_DB)
-            db.create_session(session_id, body.prompt, "task-ui")
-            create_session_vec_tables(session_id, _THINK_DB)
-
-            location = _detect_location()
-            state = ThinkingState(
-                session_id=session_id,
-                original_prompt=body.prompt,
-                iteration=1,
-                tasks=[],
-                evidence=[],
-                status="running",
-                location=location,
-            )
-
-            q.put({"type": "layer", "message": "Layer 1 — decomposing tasks…", "session_id": session_id, "location": location})
-            state = layer1_decompose(state, llm, db)
-            for t in state.tasks:
-                q.put({"type": "verbose", "layer": 1, "message": f"  [{t.id}] ({t.type}) {t.description}"})
-
-            q.put({"type": "layer", "message": f"Layer 2 — critiquing {len(state.tasks)} tasks…"})
-            tasks_before = {t.id: t.description for t in state.tasks}
-            state = layer2_critique(state, llm, db)
-            for t in state.tasks:
-                if t.id not in tasks_before:
-                    q.put({"type": "verbose", "layer": 2, "message": f"  [NEW {t.id}] ({t.type}) {t.description}"})
-                elif tasks_before[t.id] != t.description:
-                    q.put({"type": "verbose", "layer": 2, "message": f"  [REVISED {t.id}] {t.description}"})
-                else:
-                    q.put({"type": "verbose", "layer": 2, "message": f"  [OK {t.id}] {t.description}"})
-            q.put({"type": "tasks", "tasks": [_task_to_dict(t) for t in state.tasks]})
-
-            pending = [t for t in state.tasks if t.status == "pending"]
-            q.put({"type": "layer", "message": f"Layer 3 — executing {len(pending)} tasks…"})
-            state = layer3_execute(state, llm, db, on_event=q.put)
-
-            q.put({"type": "layer", "message": f"Layer 4 — verifying {len(state.evidence)} evidence items…"})
-            state = layer4_verify(state, db)
-            for ev in state.evidence:
-                status = "RELEVANT" if ev.relevant else "REJECTED"
-                q.put({"type": "verbose", "layer": 4, "message": f"  [{status}] {ev.source[:80]} ({len(ev.content)} chars)"})
-
-            q.put({"type": "layer", "message": "Layer 5 — writing checkpoint…"})
-            checkpoint = layer5_checkpoint(state, llm, db)
-
-            q.put({"type": "checkpoint", "text": checkpoint, "session_id": session_id})
-            q.put({"type": "done", "session_id": session_id, "is_done": False})
-        except Exception as e:
-            q.put({"type": "error", "message": str(e)})
-        finally:
-            q.put(None)
-
-    threading.Thread(target=worker, daemon=True).start()
-
-    async def stream():
-        loop = asyncio.get_event_loop()
-        while True:
-            event = await loop.run_in_executor(None, q.get)
-            if event is None:
-                break
-            yield f"data: {json.dumps(event)}\n\n"
-
-    return StreamingResponse(
-        stream(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
-
-
-@app.post("/api/think/{session_id}/apply")
-def think_apply_to_vault(session_id: str):
-    session_dir = _STAGING_ROOT / session_id
-    if not session_dir.exists():
-        raise HTTPException(status_code=404, detail="session staging not found")
-
-    vault_root = os.getenv(
-        "NOTES_VAULT_ROOT",
-        "/Users/punmyidol/Library/Mobile Documents/iCloud~md~obsidian/Documents/elvis",
-    )
-    dest_dir = Path(vault_root) / "Thinking" / session_id
-    dest_dir.mkdir(parents=True, exist_ok=True)
-
-    applied = []
-    for f in sorted(session_dir.iterdir()):
-        if f.suffix == ".md" and f.is_file():
-            (dest_dir / f.name).write_text(f.read_text(encoding="utf-8"), encoding="utf-8")
-            applied.append(f.name)
-
-    if not applied:
-        raise HTTPException(status_code=404, detail="no markdown files found in staging")
-
-    return {"applied": applied, "destination": str(dest_dir)}
-
-
-@app.post("/api/think/{session_id}/continue")
-async def think_continue(session_id: str, body: ThinkContinueRequest):
-    if not body.input.strip():
-        raise HTTPException(status_code=400, detail="input must be non-empty")
-
-    q: queue.Queue[dict | None] = queue.Queue()
-
-    def worker():
-        try:
-            from agent.thinking_agent import (
-                _classify_intent,
-                _load_state_from_db,
-                _task_to_dict,
-                layer1_decompose,
-                layer2_critique,
-                layer3_execute,
-                layer4_verify,
-                layer5_checkpoint,
-            )
-            from services.thinking import ThinkingDB
-
-            llm = _make_thinking_llm()
-            db = ThinkingDB(_THINK_DB)
-
-            intent = _classify_intent(body.input)
-            q.put({"type": "intent", "intent": intent, "message": f"Intent: {intent.replace('_', ' ')}"})
-
-            if intent == "stop":
-                db.update_session(session_id, status="done")
-                q.put({"type": "checkpoint", "text": "Thinking session complete. Checkpoints are in Obsidian staging for your review.", "session_id": session_id})
-                q.put({"type": "done", "session_id": session_id, "is_done": True})
-                return
-
-            session = db.get_session(session_id)
-            state = _load_state_from_db(session_id, session["iteration"] + 1, db)
-
-            if intent == "keep_going":
-                pending = [t for t in state.tasks if t.status == "pending"]
-                q.put({"type": "layer", "message": f"Layer 3 — continuing ({len(pending)} pending tasks)…"})
-                state = layer3_execute(state, llm, db)
-                q.put({"type": "layer", "message": "Layer 4 — verifying evidence…"})
-                state = layer4_verify(state, db)
-            else:
-                db.queue_injection(session_id, body.input)
-                q.put({"type": "layer", "message": "Layer 1 — processing injection (amendment pass)…"})
-                state = layer1_decompose(state, llm, db)
-                q.put({"type": "layer", "message": f"Layer 2 — critiquing updated tasks…"})
-                state = layer2_critique(state, llm, db)
-                q.put({"type": "tasks", "tasks": [_task_to_dict(t) for t in state.tasks]})
-                q.put({"type": "layer", "message": "Layer 3 — executing tasks…"})
-                state = layer3_execute(state, llm, db)
-                q.put({"type": "layer", "message": "Layer 4 — verifying evidence…"})
-                state = layer4_verify(state, db)
-
-            q.put({"type": "layer", "message": "Layer 5 — writing checkpoint…"})
-            checkpoint = layer5_checkpoint(state, llm, db)
-            q.put({"type": "tasks", "tasks": [_task_to_dict(t) for t in state.tasks]})
-            q.put({"type": "checkpoint", "text": checkpoint, "session_id": session_id})
-            q.put({"type": "done", "session_id": session_id, "is_done": False})
-        except Exception as e:
-            q.put({"type": "error", "message": str(e)})
-        finally:
-            q.put(None)
-
-    threading.Thread(target=worker, daemon=True).start()
-
-    async def stream():
-        loop = asyncio.get_event_loop()
-        while True:
-            event = await loop.run_in_executor(None, q.get)
-            if event is None:
-                break
-            yield f"data: {json.dumps(event)}\n\n"
-
-    return StreamingResponse(
-        stream(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
-
-
 # ---------------------------------------------------------------------------
 # Chat endpoints
 # ---------------------------------------------------------------------------
@@ -609,6 +302,18 @@ def _serialize_chat_messages(messages) -> list[dict]:
 class ChatRequest(BaseModel):
     message: str
     thread_id: str = "task-ui"
+
+
+class NotesSaveRequest(BaseModel):
+    path: str
+    content: str
+
+
+class NotesChatRequest(BaseModel):
+    message: str
+    note_path: str
+    note_content: str
+    history: list[dict] = []  # [{role: "user"|"assistant", content: str}]
 
 
 @app.get("/api/chat/threads")
@@ -926,6 +631,133 @@ async def brain_run_surface():
         while True:
             event = await loop.run_in_executor(None, q.get)
             if event is None:
+                break
+            yield f"data: {json.dumps(event)}\n\n"
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Notes (elvis-surfaced vault editor) endpoints
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/notes/list")
+def notes_list():
+    import yaml
+    from services.obsidian import VAULT_ROOT
+
+    vault_root = Path(VAULT_ROOT).resolve()
+    surfaced_dir = vault_root / "elvis-surfaced"
+    if not surfaced_dir.exists():
+        return []
+
+    results = []
+    for f in sorted(surfaced_dir.glob("*.md"), reverse=True):
+        rel_path = str(f.relative_to(vault_root))
+        stem = f.stem  # e.g. "2026-05-16-helmet-detection-system-setup"
+
+        parts = stem.split("-", 3)
+        created = ""
+        slug = stem
+        if len(parts) >= 3 and all(p.isdigit() for p in parts[:3]):
+            created = f"{parts[0]}-{parts[1]}-{parts[2]}"
+            slug = parts[3] if len(parts) > 3 else stem
+
+        source_signals: list = []
+        try:
+            raw = f.read_text(encoding="utf-8")
+            if raw.startswith("---"):
+                end = raw.find("---", 3)
+                if end != -1:
+                    fm = yaml.safe_load(raw[3:end]) or {}
+                    source_signals = fm.get("source_signals", []) or []
+                    if fm.get("created"):
+                        created = str(fm["created"])
+        except Exception:
+            pass
+
+        title = slug.replace("-", " ").title()
+        results.append({
+            "filename": f.name,
+            "path": rel_path,
+            "title": title,
+            "created": created,
+            "source_signals": source_signals if isinstance(source_signals, list) else [],
+        })
+
+    return results
+
+
+@app.post("/api/notes/save")
+def notes_save(body: NotesSaveRequest):
+    from services.obsidian import VAULT_ROOT
+
+    vault_root = Path(VAULT_ROOT).resolve()
+    candidate = (vault_root / body.path).resolve()
+    try:
+        candidate.relative_to(vault_root)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="path escapes vault root")
+    if not candidate.exists() or not candidate.is_file():
+        raise HTTPException(status_code=404, detail="note not found")
+    try:
+        candidate.write_text(body.content, encoding="utf-8")
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"failed to write note: {e}")
+    return {"ok": True}
+
+
+@app.post("/api/notes/chat")
+async def notes_chat(body: NotesChatRequest):
+    import uuid as _uuid
+    from langchain_core.messages import HumanMessage as _HM, AIMessage as _AM
+    from agent.chatbot import ask_chatbot, get_server_workflow
+
+    wf = get_server_workflow()
+    # Fresh throwaway thread per request — history and note content supplied by the client
+    config = {"configurable": {"thread_id": f"notes-ephemeral-{_uuid.uuid4()}"}}
+
+    # Always inject fresh note content, then replay prior exchange, then new message
+    context_msg = (
+        f"[Note context — I am editing the note at `{body.note_path}`. "
+        f"Current content:\n\n```markdown\n{body.note_content}\n```\n\n"
+        f"When providing rewritten sections or the full file, wrap them in "
+        f"```markdown ... ``` blocks so I can apply them directly to my editor.]"
+    )
+    messages = [_HM(context_msg), _AM("I've loaded the note. How would you like to edit it?")]
+    for entry in body.history:
+        role = entry.get("role", "")
+        content = entry.get("content", "")
+        if role == "user":
+            messages.append(_HM(content))
+        elif role == "assistant":
+            messages.append(_AM(content))
+    messages.append(_HM(body.message))
+
+    q: queue.Queue[dict | None] = queue.Queue()
+
+    def worker():
+        try:
+            for chunk in ask_chatbot(messages, config, workflow=wf):
+                q.put({"type": "chunk", "text": chunk})
+        except Exception as e:
+            q.put({"type": "error", "message": str(e)})
+        finally:
+            q.put(None)
+
+    threading.Thread(target=worker, daemon=True).start()
+
+    async def stream():
+        loop = asyncio.get_event_loop()
+        while True:
+            event = await loop.run_in_executor(None, q.get)
+            if event is None:
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
                 break
             yield f"data: {json.dumps(event)}\n\n"
 

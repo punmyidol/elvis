@@ -1,4 +1,4 @@
-import type { Run, RunSummary, CadStatusEvent, CadOutput, ThinkEvent, ThinkSessionSummary, ThinkSessionDetail, ThinkFile, ChatThread, ChatMessage, ChatEvent, WeeklySummary, BrainSurfacedRow, BrainStats, BrainTrendPoint, BrainNote, BrainEngagementRunResult, BrainSurfaceEvent } from './types'
+import type { Run, RunSummary, CadStatusEvent, CadOutput, ChatThread, ChatMessage, ChatEvent, WeeklySummary, BrainSurfacedRow, BrainStats, BrainTrendPoint, BrainNote, BrainEngagementRunResult, BrainSurfaceEvent, SurfacedNote, NotesChatEvent } from './types'
 
 const BASE = '/api'
 
@@ -100,40 +100,6 @@ async function* _sseStream<T>(res: Response): AsyncGenerator<T> {
   }
 }
 
-export async function* startThinking(prompt: string): AsyncGenerator<ThinkEvent> {
-  const res = await fetch(`${BASE}/think`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt }),
-  })
-  if (!res.ok) throw new Error(await res.text())
-  yield* _sseStream<ThinkEvent>(res)
-}
-
-export async function fetchThinkSessions(): Promise<ThinkSessionSummary[]> {
-  const res = await fetch(`${BASE}/think/sessions`)
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
-}
-
-export async function fetchThinkSession(sessionId: string): Promise<ThinkSessionDetail> {
-  const res = await fetch(`${BASE}/think/${sessionId}`)
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
-}
-
-export async function fetchThinkFiles(sessionId: string): Promise<ThinkFile[]> {
-  const res = await fetch(`${BASE}/think/${sessionId}/files`)
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
-}
-
-export async function fetchThinkFile(sessionId: string, filename: string): Promise<string> {
-  const res = await fetch(`${BASE}/think/${sessionId}/files/${encodeURIComponent(filename)}`)
-  if (!res.ok) throw new Error(await res.text())
-  return (await res.json()).content as string
-}
-
 export async function fetchChatThreads(): Promise<ChatThread[]> {
   const res = await fetch(`${BASE}/chat/threads`)
   if (!res.ok) throw new Error(await res.text())
@@ -162,12 +128,6 @@ export async function* sendChatMessage(message: string, threadId: string): Async
   yield* _sseStream<ChatEvent>(res)
 }
 
-export async function applyThinkToVault(sessionId: string): Promise<{ applied: string[]; destination: string }> {
-  const res = await fetch(`${BASE}/think/${sessionId}/apply`, { method: 'POST' })
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
-}
-
 export async function deleteChatThread(threadId: string): Promise<void> {
   const res = await fetch(`${BASE}/chat/threads/${encodeURIComponent(threadId)}`, { method: 'DELETE' })
   if (!res.ok) throw new Error(await res.text())
@@ -177,16 +137,6 @@ export async function fetchWeeklySummaries(): Promise<WeeklySummary[]> {
   const res = await fetch(`${BASE}/weekly`)
   if (!res.ok) throw new Error(await res.text())
   return res.json()
-}
-
-export async function* continueThinking(sessionId: string, input: string): AsyncGenerator<ThinkEvent> {
-  const res = await fetch(`${BASE}/think/${sessionId}/continue`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ input }),
-  })
-  if (!res.ok) throw new Error(await res.text())
-  yield* _sseStream<ThinkEvent>(res)
 }
 
 // Brain
@@ -224,4 +174,35 @@ export async function* runSurfacing(): AsyncGenerator<BrainSurfaceEvent> {
   const res = await fetch(`${BASE}/brain/run/surface`, { method: 'POST' })
   if (!res.ok) throw new Error(await res.text())
   yield* _sseStream<BrainSurfaceEvent>(res)
+}
+
+// Notes
+export async function listNotes(): Promise<SurfacedNote[]> {
+  const res = await fetch(`${BASE}/notes/list`)
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function saveNote(path: string, content: string): Promise<void> {
+  const res = await fetch(`${BASE}/notes/save`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path, content }),
+  })
+  if (!res.ok) throw new Error(await res.text())
+}
+
+export async function* sendNotesChatMessage(
+  message: string,
+  notePath: string,
+  noteContent: string,
+  history: Array<{ role: string; content: string }>,
+): AsyncGenerator<NotesChatEvent> {
+  const res = await fetch(`${BASE}/notes/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message, note_path: notePath, note_content: noteContent, history }),
+  })
+  if (!res.ok) throw new Error(await res.text())
+  yield* _sseStream<NotesChatEvent>(res)
 }

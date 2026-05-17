@@ -1,197 +1,178 @@
-# Second Brain v3 — Actionable Build Plans
+# New Project Intake — Chat-to-Vault-to-Second-Brain
 
-Extends v2 (`chatbot/services/second_brain.py`). v2 surfaces topics and runs
-short research tasks; v3 produces a **structured, multi-step build plan** for
-technical topics (hardware, system setup, project execution) and writes the
-consolidated result back into the Obsidian vault as an actionable todo note.
-
-All LLM calls stay on local **`qwen2.5:14b`** via Ollama (`SECOND_BRAIN_MODEL`).
+When Pun starts a new project, Elvis should guide a structured intake conversation,
+write clean notes into Obsidian, then immediately run the second brain loop to
+produce a build plan — all from the existing chat tab.
 
 ---
 
-## Problems being solved
+## What it does
 
-| # | Problem | Impact |
-|---|---|---|
-| 1 | Planner produces 2 generic tasks instead of a full 6-step plan | Plans are too shallow to be useful |
-| 2 | No output consolidation — results scatter across `runs/{id}/task_XX.txt` | Pun never sees a coherent document |
-| 3 | "Draw circuit diagrams" has no tool | Step 4 silently fails or hallucinates |
-| 4 | Vault KNN returns noise (Roblox, Micky BD) instead of project notes | Step 1 requirements extraction is blind |
-| 5 | research/tabulation constraint blocks steps 3–6 | Planner self-censors valid build steps |
-
----
-
-## 1. Fix vault KNN noise
-
-**Root cause:** `vec_index` embeddings are stale — the vault indexer hasn't run
-since new notes were added.
-
-**Fix:** Re-run `python obsidian-module/indexer.py` as part of the setup and
-add it to the existing Obsidian ingestion loop so the index stays fresh.
-
-No code changes in `second_brain.py`. This is a one-time re-index + scheduler
-hygiene fix.
+1. Pun clicks **New Project** (new button in chat tab, next to Daily Briefing / Obsidian Only)
+2. Elvis switches into intake mode for that thread — asks structured questions:
+   goals, components already owned, constraints, budget, environment
+3. When Pun says they're done, Elvis extracts the structured data and writes a
+   clean project note to the Obsidian vault (e.g. `Helmet Detection/Project.md`)
+4. Elvis immediately calls `second_brain_loop()` — which picks up the new note
+   as a fresh signal and runs the 6-step build plan
+5. The build plan note appears in `elvis-surfaced/{date}-{slug}-build-plan.md`
+6. Elvis tells Pun where the notes landed
 
 ---
 
-## 2. Build-plan task skeleton — `second_brain.py`
+## Files to change
 
-### 2.1 Detect "build plan" topics
+| File | Change |
+|---|---|
+| `task-ui/frontend/src/components/ChatView.tsx` | Add "New Project" button; send intake-start message when clicked |
+| `task-ui/server.py` | Add `/intake/start` endpoint and `/intake/finish` endpoint |
+| `chatbot/agent/chatbot.py` | Add intake mode: different system prompt when thread is flagged as intake |
+| `chatbot/services/second_brain.py` | Expose `run_for_note(note_path)` — runs the loop targeting a specific new note |
 
-After `_pick_topics`, classify each item as either `research` or `build_plan`:
+---
 
+## 1. UI — `ChatView.tsx`
+
+Add a third button in the `flex gap-2` quick-actions div:
+
+```tsx
+<button
+  onClick={handleNewProject}
+  disabled={streaming || !threadId}
+  className="px-3 py-1 text-[11px] rounded-full border border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+>
+  New Project
+</button>
+```
+
+`handleNewProject` sends a fixed opening message to the chat:
+```
+__INTAKE_START__
+```
+
+The double-underscore prefix marks it as a system trigger, not user text.
+The server intercepts it and sets the thread's mode to `intake`.
+
+---
+
+## 2. Server — `server.py`
+
+### 2.1 Thread mode tracking
+
+Add a simple in-memory dict:
 ```python
-def _is_build_plan(item: dict) -> bool:
-    """True when the topic looks like a hardware/system build project."""
-    keywords = ("setup", "build", "system", "hardware", "circuit",
-                "install", "deploy", "detection", "sensor", "camera")
-    text = (item["topic"] + " " + item["reason"]).lower()
-    return any(k in text for k in keywords)
+_thread_modes: dict[str, str] = {}  # thread_id → "intake" | "normal"
 ```
 
-Simple keyword heuristic — no extra LLM call.
+When the chat endpoint receives `__INTAKE_START__`, set `_thread_modes[thread_id] = "intake"`.
+When the chat endpoint receives `__INTAKE_DONE__`, call `_finish_intake(thread_id, messages)`.
 
-### 2.2 `_plan_build_tasks` — new function
+### 2.2 `_finish_intake(thread_id, messages)`
 
-For `build_plan` topics, replace the generic `_plan_tasks` with a skeleton
-planner that **fills in a fixed 6-step outline** rather than generating
-structure from scratch:
-
-```python
-_BUILD_SKELETON = [
-    ("Identify requirements",
-     "Search vault and emails for notes about this project. "
-     "Extract key requirements as a bullet list (physical constraints, "
-     "environment, power, connectivity, budget)."),
-    ("Identify hardware options",
-     "Web search for hardware components that satisfy the requirements. "
-     "List candidate parts for each requirement."),
-    ("Compare hardware prices",
-     "For each candidate part, fetch current prices and product links. "
-     "Produce a markdown table: Component | Option | Price | Link."),
-    ("Draft circuit / wiring diagram",
-     "Write a Mermaid flowchart (```mermaid) showing how components connect. "
-     "Label each edge with signal type (PWR, GND, GPIO, I2C, USB, etc.)."),
-    ("Sanity check",
-     "Cross-check: voltage/current compatibility, physical fit, "
-     "software driver availability, and budget total."),
-    ("Write complete build steps",
-     "Write a numbered step-by-step build guide with tools needed, "
-     "safety notes, and verification tests after each step."),
-]
-```
-
-The LLM receives the skeleton steps and fills in **project-specific
-descriptions** for each. This guarantees all 6 steps appear and are grounded
-in the actual topic.
-
-Prompt outline:
-
-```
-You are Elvis building a plan for: {topic}
-Reason: {reason}
-
-What already exists:
-{full_context brief}
-
-Below are 6 required steps. For each step, keep the title exactly as given
-and write a specific description tailored to this project. If a step is
-already done (see "Already completed"), say so briefly and skip.
-
-Steps:
-1. Identify requirements ...
-...
-6. Write complete build steps ...
-
-Output JSON: [{"sequence": 1, "title": "...", "description": "..."}]
-```
-
-The constraint shifts from "research/tabulation only" to "use Elvis's tools:
-web_search, fetch_url, search_obsidian, search_gmail, write_document."
-
-### 2.3 Remove `<10 min` cap for build plans
-
-The existing `_plan_tasks` prompt says "doable in <10 minutes". `_plan_build_tasks`
-drops this — build steps are multi-minute by nature.
+1. Extract the conversation history for that thread
+2. Call Elvis one more time with a system prompt that extracts structured JSON:
+   ```
+   Extract from this conversation: project name, goals (list), owned components
+   (list with prices if known), missing components, constraints, budget.
+   Output strict JSON only.
+   ```
+3. Write the note to vault (see §4)
+4. Call `second_brain_loop()` in a background thread
+5. Send a final message back to the chat: "Project note written to vault. Build plan is running in the background."
 
 ---
 
-## 3. Output consolidation — `task_runner.py` + `second_brain.py`
+## 3. Intake system prompt — `chatbot.py`
 
-### 3.1 `consolidate_run(run_id) -> str`
-
-New function in `task_runner.py`:
-
+In `chatbot_node`, check if the thread is in intake mode:
 ```python
-def consolidate_run(run_id: str) -> str:
-    """Concatenate all done task outputs into a single markdown document."""
+if _thread_modes.get(thread_id) == "intake":
+    system_prompt = _build_intake_prompt()
+else:
+    system_prompt = _build_system_prompt(mems)
 ```
 
-Returns a markdown string with each task's output under a `## Step N — Title`
-heading. Called after `resume_run` completes.
+`_build_intake_prompt()` replaces the normal system prompt with one focused on
+intake — no tool calls, just conversation:
 
-### 3.2 Write consolidated note to vault
-
-After `consolidate_run`, call `write_document` (existing tool, sandboxed to
-`chatbot/documents/`) to save the plan, **or** stage it as an Obsidian note
-via `stage_create` so it appears in the vault alongside the surfaced note.
-
-Target vault path:
 ```
-elvis-surfaced/{date}-{slug}-build-plan.md
+You are Elvis helping Pun start a new project. Ask structured questions one at a time:
+1. What is the project? (one sentence)
+2. What do you already own? (list components and prices if known)
+3. What is missing or unknown?
+4. Physical constraints: environment (indoor/outdoor), power source, enclosure?
+5. Budget?
+6. Any deadlines or other constraints?
+
+After each answer, confirm what you heard and ask the next question.
+When all questions are answered, say exactly: "Got it. Type 'done' when you're ready to write the notes."
+Do not call any tools. Do not write notes yet.
 ```
 
-Frontmatter:
-```yaml
-elvis: build-plan
-source_surfaced_id: {row_id}
+When Pun types "done", the frontend sends `__INTAKE_DONE__` and the server
+calls `_finish_intake`.
+
+---
+
+## 4. Vault note format
+
+Write to `{project_name}/{project_name}.md` in the vault root (not `elvis-surfaced/`):
+
+```markdown
+---
+elvis: project-intake
 created: {date}
+---
+
+## Goals
+- {goal 1}
+- {goal 2}
+
+## Owned Components
+| Item | Price (THB) |
+|---|---|
+| {component} | {price} |
+
+## Missing / TBD
+- {item}
+
+## Constraints
+- Environment: {env}
+- Power: {power}
+- Budget: {budget} THB
 ```
 
-This is the file Pun opens to see the full plan.
-
-### 3.3 Link surfaced note → build plan
-
-Append one line to the original surfaced note:
-```
-**Build plan:** [[{date}-{slug}-build-plan]]
-```
-
-Requires a small `_append_note(note_path, line)` helper using the existing
-`StagingArea` path.
+Use `stage_create` + `StagingArea.apply` (existing infrastructure).
 
 ---
 
-## 4. Mermaid diagram (step 4)
+## 5. Triggering the second brain loop
 
-No new tool needed. Obsidian renders Mermaid natively. The task description
-for step 4 explicitly tells the executor to output a ` ```mermaid ` block.
-`task_runner` saves the raw output as `.md`, which the consolidation step
-includes verbatim.
+After the note is written, call `second_brain_loop()` in a background thread.
+The new vault note will appear as a fresh obsidian signal — the loop's
+`_materially_changed_since` check will pass because a new file was just written.
 
-The executor (Elvis chatbot agent) already knows Mermaid syntax from training.
-The only change is the task description (covered by §2.2 skeleton step 4).
+The loop will pick up the project topic, detect it as a build plan
+(via `_is_build_plan`), and run the 6-step pipeline.
 
----
-
-## 5. Build order
-
-1. Re-run vault indexer (no code change)
-2. `_is_build_plan` classifier + `_BUILD_SKELETON` in `second_brain.py`
-3. `_plan_build_tasks` replaces `_plan_tasks` when `_is_build_plan` is true
-4. `consolidate_run` in `task_runner.py`
-5. Write consolidated note to vault + link back from surfaced note
-6. Test end-to-end with helmet detection topic
-
-Only steps 2–3 change the planning path. Steps 4–5 are new but isolated to
-`task_runner.py` and the `_write_note` area. Existing `_plan_tasks` for
-non-build topics is untouched.
+No changes to `second_brain.py` needed — it already handles this correctly.
 
 ---
 
-## 6. Out of scope
+## 6. Build order
 
-- Actual image/SVG circuit diagrams (Mermaid text is the ceiling for now)
-- Automatic hardware ordering or price scraping beyond `web_search + fetch_url`
-- Wake-word / proactive notification when the plan is ready
-- Changes to the React UI (plan note appears in Obsidian, that's sufficient)
+1. `ChatView.tsx` — add New Project button + `handleNewProject`
+2. `server.py` — add `_thread_modes`, intercept `__INTAKE_START__` / `__INTAKE_DONE__`, `_finish_intake`
+3. `chatbot.py` — add `_build_intake_prompt`, check thread mode in `chatbot_node`
+4. Vault note writer in `_finish_intake` using existing `stage_create`
+5. Background `second_brain_loop()` call after note is written
+6. Test end-to-end: click button → chat → "done" → check vault note → check build plan
+
+---
+
+## 7. Out of scope
+
+- Persisting thread mode across server restarts (in-memory is fine for single-user)
+- A "resume intake" flow if the user closes the tab mid-intake
+- Editing the intake note after the fact via UI (Obsidian handles that)
+- Multiple simultaneous intake sessions
