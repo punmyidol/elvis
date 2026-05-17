@@ -65,6 +65,7 @@ def _create_llm():
         temperature=0.5,
         streaming=True,
         reasoning=False,
+        num_ctx=16384,
     ).bind_tools(ELVIS_TOOLS)
 
 
@@ -79,8 +80,8 @@ def _compile_workflow(llm, checkpointer):
         )
         lower = latest_human.lower()
 
-        # --- Thinking agent routing ---
-        if thread_id in _active_thinking_sessions:
+        # --- Thinking agent routing (skipped for task-runner threads) ---
+        if not thread_id.startswith("run-") and thread_id in _active_thinking_sessions:
             session_id = _active_thinking_sessions[thread_id]
             from langchain_ollama import ChatOllama as _Ollama
             thinking_llm = _Ollama(
@@ -91,7 +92,7 @@ def _compile_workflow(llm, checkpointer):
                 del _active_thinking_sessions[thread_id]
             return {"messages": [_AIMessage(content=checkpoint)]}
 
-        if any(kw in lower for kw in _THINKING_START_KEYWORDS):
+        if not thread_id.startswith("run-") and any(kw in lower for kw in _THINKING_START_KEYWORDS):
             from langchain_ollama import ChatOllama as _Ollama
             thinking_llm = _Ollama(
                 model=OLLAMA_MODEL, base_url=OLLAMA_BASE_URL, temperature=0.5
@@ -101,7 +102,7 @@ def _compile_workflow(llm, checkpointer):
             return {"messages": [_AIMessage(content=checkpoint)]}
         # --- End thinking agent routing ---
 
-        mems = recall(latest_human, limit=MAX_RELEVANT_MEMORIES)
+        mems = recall(latest_human[:500], limit=MAX_RELEVANT_MEMORIES)
         system_prompt = _build_system_prompt(mems)
 
         trimmed = trim_messages(
@@ -115,8 +116,11 @@ def _compile_workflow(llm, checkpointer):
         response = llm.invoke([SystemMessage(content=system_prompt)] + trimmed)
         return {"messages": [response]}
 
-    def memory_write_node(state: MessagesState) -> dict:
+    def memory_write_node(state: MessagesState, config: RunnableConfig = None) -> dict:
         from langchain_core.messages import AIMessage
+        thread_id = (config or {}).get("configurable", {}).get("thread_id", "")
+        if thread_id.startswith("run-"):
+            return {}
         messages = state.get("messages", [])
         last_human = next((m for m in reversed(messages) if isinstance(m, HumanMessage)), None)
         last_ai = next(

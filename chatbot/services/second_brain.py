@@ -10,9 +10,36 @@ Daily surfacing loop. Once a day:
 
 The engagement checker (chatbot/core/engagement.py) reads the resulting rows.
 
-Run on the daily 09:00 cron via scheduler.py, or manually:
-    python -m chatbot.services.second_brain
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+FULL LOOP (production)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     python -m chatbot.services.second_brain run-once
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STAGED RUN (testing — run each phase independently)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Each phase writes a JSON file consumed by the next phase.
+Inspect or edit any file before continuing.
+
+  Phase 1 — assemble context (no LLM):
+    python -m chatbot.services.second_brain dump-ctx [--days 7] [--out sb_ctx.json]
+
+  Phase 2 — pick topics (LLM #1):
+    python -m chatbot.services.second_brain pick --ctx sb_ctx.json [--out sb_topics.json]
+    # omit --ctx to generate fresh context inline
+
+  Phase 3 — synthesize notes (LLM #2):
+    python -m chatbot.services.second_brain synthesize --topics sb_topics.json [--ctx sb_ctx.json] [--out sb_notes.json]
+
+  Phase 4 — write notes to vault + DB:
+    python -m chatbot.services.second_brain write-notes --notes sb_notes.json
+
+  Phase 5 — plan tasks (LLM #3, no execution):
+    python -m chatbot.services.second_brain plan-tasks --notes sb_notes.json [--out sb_tasks.json]
+
+Phases 4 and 5 are independent — both read sb_notes.json.
+Run them in either order, or skip either one.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
 
 import argparse
@@ -515,9 +542,10 @@ _BUILD_SKELETON = [
      "connect. Label every edge with the signal type: PWR, GND, GPIO, I2C, USB, "
      "UART, etc. Include power rails."),
     ("Sanity check",
-     "Cross-check the selected components: voltage/current compatibility, physical "
-     "fit, software driver availability for the chosen OS/platform, and confirm "
-     "the budget total from the price table."),
+     "Trust the user's component choices — do not suggest replacements. "
+     "Only flag issues that are provably wrong: compatibility problems, "
+     "physical fit conflicts, or budget overruns. Confirm the budget total "
+     "from the price table."),
     ("Write complete build steps",
      "Write a numbered step-by-step build guide. Each step must include: tools "
      "needed, safety notes, the action, and a verification test to confirm the "
@@ -551,10 +579,12 @@ def _plan_build_tasks(
             "\n\nVault notes already retrieved (use these directly, "
             "no need to re-search for them):"
         )
-        for h in vault_pre:
+        _url_re = re.compile(r"https?://\S+")
+        for h in vault_pre[:5]:
             match_info = "path-match" if h["match_type"] == "path" else f"dist={h['distance']:.3f}"
+            content_clean = _url_re.sub("[link]", h["content"])[:1200].strip()
             vault_inject_lines.append(
-                f"\n[{h['note_path']} | {match_info}]\n{h['content'][:500]}"
+                f"\n[{h['note_path']} | {match_info}]\n{content_clean}"
             )
     vault_inject = "\n".join(vault_inject_lines)
 
@@ -851,19 +881,195 @@ def _count_changes(last_run_at: str, db_path: str) -> int:
 
 
 # ---------------------------------------------------------------------------
+# CLI helpers
+# ---------------------------------------------------------------------------
+
+def _save_json(data, path: str) -> None:
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2, default=str)
+    print(f"[SecondBrain] Saved → {path}")
+
+
+def _load_json(path: str):
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _make_llm() -> ChatOllama:
+    return ChatOllama(
+        model=SECOND_BRAIN_MODEL,
+        base_url=OLLAMA_BASE_URL,
+        temperature=0.2,
+        streaming=False,
+    )
+
+
+# ---------------------------------------------------------------------------
+# CLI command handlers
+# ---------------------------------------------------------------------------
+
+def cmd_dump_ctx(args) -> None:
+    ctx = get_week_dump(days=args.days, db_path=args.db)
+    _save_json(ctx, args.out)
+
+
+def cmd_pick(args) -> None:
+    if args.ctx:
+        ctx = _load_json(args.ctx)
+    else:
+        print("[SecondBrain] No --ctx provided, generating fresh context...")
+        ctx = get_week_dump(days=SECOND_BRAIN_RAW_WINDOW_DAYS, db_path=args.db)
+    llm = _make_llm()
+    topics = _pick_topics(ctx, llm)
+    print(f"[SecondBrain] Picked {len(topics)} topic(s):")
+    for t in topics:
+        print(f"  - {t['topic']}")
+    _save_json(topics, args.out)
+
+
+def cmd_synthesize(args) -> None:
+    topics = _load_json(args.topics)
+    if args.ctx:
+        ctx = _load_json(args.ctx)
+    else:
+        print("[SecondBrain] No --ctx provided, generating fresh context...")
+        ctx = get_week_dump(days=SECOND_BRAIN_RAW_WINDOW_DAYS, db_path=args.db)
+
+    llm = _make_llm()
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    evidence_pool: list[dict] = []
+    for rows in ctx["raw_by_source"].values():
+        evidence_pool.extend(rows)
+
+    items_out = []
+    for item in topics:
+        evidence = _select_evidence(item["topic"], evidence_pool, db_path=args.db)
+        history = knn_history(
+            query=item["history_query"],
+            top_k=SECOND_BRAIN_HISTORY_TOP_K,
+            db_path=args.db,
+        )
+        full_context = {
+            "topic":           item["topic"],
+            "vault_knn":       knn_history(item["topic"], top_k=12, db_path=args.db),
+            "recent_edits":    get_recent_edits(days=14, db_path=args.db),
+            "engaged_history": get_engaged_surfacings(limit=20, db_path=args.db),
+            "completed_tasks": get_completed_tasks(limit=20, db_path=args.db),
+        }
+        body = _synthesize_note(item, evidence, history, llm, full_context)
+        if not body:
+            print(f"[SecondBrain] Empty note for {item['topic']!r}, skipping.")
+            continue
+        items_out.append({
+            "topic":          item["topic"],
+            "reason":         item["reason"],
+            "source_signals": item["source_signals"],
+            "slug":           _slugify(item["topic"]),
+            "date":           today,
+            "body":           body,
+            "evidence":       evidence,
+            "full_context":   full_context,
+        })
+        print(f"[SecondBrain] Synthesized: {item['topic']!r}")
+
+    _save_json({"date": today, "items": items_out}, args.out)
+
+
+def cmd_write_notes(args) -> None:
+    data = _load_json(args.notes)
+    items = data["items"]
+    today = data.get("date") or datetime.now().strftime("%Y-%m-%d")
+    written = 0
+    for item in items:
+        slug = item["slug"]
+        try:
+            note_path = _write_note(slug, today, item["body"], item["source_signals"])
+        except FileExistsError:
+            slug = f"{slug}-{datetime.now().strftime('%H%M')}"
+            note_path = _write_note(slug, today, item["body"], item["source_signals"])
+        row_id = _record_surfaced(
+            topic=item["topic"],
+            source_signals=item["source_signals"],
+            reason=item["reason"],
+            note_path=note_path,
+            db_path=args.db,
+            full_context_json=_cap_full_context_json(item.get("full_context") or {}),
+        )
+        print(f"[SecondBrain] Surfaced #{row_id}: {item['topic']} → {note_path}")
+        written += 1
+    print(f"[SecondBrain] Wrote {written} note(s).")
+
+
+def cmd_plan_tasks(args) -> None:
+    data = _load_json(args.notes)
+    items = data["items"]
+    llm = _make_llm()
+    results = []
+    for item in items:
+        full_context = item.get("full_context") or {}
+        is_build = _is_build_plan(item)
+        steps = (
+            _plan_build_tasks(item, item["body"], full_context, llm)
+            if is_build
+            else _plan_tasks(item, item["body"], full_context, llm)
+        )
+        plan_type = "build-plan" if is_build else "research"
+        print(f"[SecondBrain] {item['topic']!r}: {len(steps)} {plan_type} task(s)")
+        for s in steps:
+            print(f"  [{s['sequence']}] {s['title']}")
+        results.append({
+            "topic":    item["topic"],
+            "slug":     item["slug"],
+            "is_build": is_build,
+            "steps":    steps,
+        })
+    _save_json(results, args.out)
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description="Elvis second-brain surfacing loop.")
-    p.add_argument(
-        "command",
-        nargs="?",
-        default="run-once",
-        choices=["run-once"],
-        help="Action to take.",
-    )
+    p.add_argument("--db", default=DB_PATH, metavar="PATH", help="Path to elvis.db")
+    sub = p.add_subparsers(dest="command", required=True)
+
+    sub.add_parser("run-once", help="Full loop: pick → synthesize → write → plan → execute.")
+
+    sp = sub.add_parser("dump-ctx", help="Phase 1: assemble week context, save to JSON.")
+    sp.add_argument("--days", type=int, default=SECOND_BRAIN_RAW_WINDOW_DAYS)
+    sp.add_argument("--out", default="sb_ctx.json", metavar="FILE")
+
+    sp = sub.add_parser("pick", help="Phase 2: LLM picks topics from context.")
+    sp.add_argument("--ctx", default=None, metavar="FILE", help="sb_ctx.json (omit to generate fresh)")
+    sp.add_argument("--out", default="sb_topics.json", metavar="FILE")
+
+    sp = sub.add_parser("synthesize", help="Phase 3: LLM synthesizes one note per topic.")
+    sp.add_argument("--topics", required=True, metavar="FILE", help="sb_topics.json from pick")
+    sp.add_argument("--ctx", default=None, metavar="FILE", help="sb_ctx.json (omit to generate fresh)")
+    sp.add_argument("--out", default="sb_notes.json", metavar="FILE")
+
+    sp = sub.add_parser("write-notes", help="Phase 4: write notes to vault and record in DB.")
+    sp.add_argument("--notes", required=True, metavar="FILE", help="sb_notes.json from synthesize")
+
+    sp = sub.add_parser("plan-tasks", help="Phase 5: LLM plans tasks per note (no execution).")
+    sp.add_argument("--notes", required=True, metavar="FILE", help="sb_notes.json from synthesize")
+    sp.add_argument("--out", default="sb_tasks.json", metavar="FILE")
+
     args = p.parse_args()
 
-    n = second_brain_loop()
-    print(f"[SecondBrain] Wrote {n} note(s).")
+    if args.command == "run-once":
+        n = second_brain_loop()
+        print(f"[SecondBrain] Wrote {n} note(s).")
+    elif args.command == "dump-ctx":
+        cmd_dump_ctx(args)
+    elif args.command == "pick":
+        cmd_pick(args)
+    elif args.command == "synthesize":
+        cmd_synthesize(args)
+    elif args.command == "write-notes":
+        cmd_write_notes(args)
+    elif args.command == "plan-tasks":
+        cmd_plan_tasks(args)

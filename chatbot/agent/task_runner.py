@@ -8,8 +8,8 @@ from typing import Generator
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_ollama import ChatOllama
 
-from agent.chatbot import ask_chatbot
-from core.config import OLLAMA_MODEL, OLLAMA_BASE_URL
+from agent.chatbot import ask_chatbot, _create_llm, _compile_workflow
+from core.config import OLLAMA_MODEL, OLLAMA_BASE_URL, DB_PATH
 
 RUNS_DIR = Path(__file__).parent.parent / "runs"
 
@@ -79,6 +79,14 @@ def start_run(tasks: list[str]) -> str:
 
 
 def resume_run(run_id: str) -> Generator[str, None, None]:
+    import sqlite3
+    from langgraph.checkpoint.sqlite import SqliteSaver
+
+    _workflow = _compile_workflow(
+        _create_llm(),
+        SqliteSaver(sqlite3.connect(DB_PATH, check_same_thread=False)),
+    )
+
     checkpoint = _load_checkpoint(run_id)
     tasks = checkpoint["tasks"]
     n = len(tasks)
@@ -132,7 +140,7 @@ def resume_run(run_id: str) -> Generator[str, None, None]:
         }
 
         try:
-            raw_output = "".join(ask_chatbot([HumanMessage(content=prompt)], config))
+            raw_output = "".join(ask_chatbot([HumanMessage(content=prompt)], config, workflow=_workflow))
             ext, content = _format_output(task_info["task"], raw_output)
             slug = _slugify(task_info["task"])
             filename = f"task_{idx:02d}_{slug}.{ext}"
