@@ -48,7 +48,9 @@ import os
 import re
 import sqlite3
 import sys
+import yaml
 from datetime import datetime, timedelta
+from pathlib import Path
 
 _CHATBOT_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 if _CHATBOT_DIR not in sys.path:
@@ -531,12 +533,19 @@ _BUILD_SKELETON = [
      "components with their specs and prices, (2) physical constraints, environment, "
      "power supply, connectivity, and budget requirements. List owned components first."),
     ("Identify hardware options",
-     "Using the already-owned components found in step 1 as the baseline, web search "
-     "only for components that are still missing or need an upgrade. Do not suggest "
-     "replacements for components already purchased. List 1-3 candidate parts per gap."),
+     "Using the already-owned components found in step 1 as the baseline, search for "
+     "components that are still missing or need an upgrade. Do not suggest replacements "
+     "for components already purchased. Search Lazada Thailand first using web_search: "
+     "query format is '[component type] lazada thailand', where [component type] is the "
+     "actual missing component for THIS project (e.g. if the project needs a relay module, "
+     "search 'relay module lazada thailand'). List 1-3 candidate parts per gap by their "
+     "generic product name as it appears on Lazada — not international brand names."),
     ("Compare hardware prices",
-     "For each candidate part, fetch current prices and product page links. "
-     "Output a markdown table with columns: Component | Option | Price | Link."),
+     "For each candidate part identified in step 2, find current prices. "
+     "Search Lazada first: use web_search with 'site:lazada.co.th {part name}' or '{part name} lazada thailand', "
+     "then fetch_url on the product page to confirm the price. "
+     "If the part is not available on Lazada, fall back to a general web search. "
+     "Output a markdown table: Component | Option | Price (THB) | Source | Link."),
     ("Draft circuit / wiring diagram",
      "Write a Mermaid flowchart block (```mermaid) showing how all components "
      "connect. Label every edge with the signal type: PWR, GND, GPIO, I2C, USB, "
@@ -571,8 +580,33 @@ def _plan_build_tasks(
     # Pre-search vault before planning so step 1 gets the real note content
     # injected directly — we cannot trust the agent to pick the right query.
     from rag.vector import search_obsidian_vectors
+    from pathlib import Path as _Path2
     topic_query = item["topic"].replace("-", " ")
-    vault_pre = search_obsidian_vectors(topic_query, top_k=5, db_path=DB_PATH)
+    vault_pre_raw = search_obsidian_vectors(topic_query, top_k=10, db_path=DB_PATH)
+
+    # Exclude notes from other project folders (folders with a Requirements.md
+    # containing 'elvis: project-intake') to prevent cross-project contamination.
+    vault_root_path = _Path2(VAULT_ROOT)
+    other_project_prefixes: set[str] = set()
+    for d in vault_root_path.iterdir():
+        if not d.is_dir() or d.name.startswith("."):
+            continue
+        req = d / "Requirements.md"
+        if req.exists():
+            try:
+                if "elvis: project-intake" in req.read_text(encoding="utf-8"):
+                    folder_prefix = d.name + "/"
+                    if not item["topic"].lower().replace(" ", "-") in d.name.lower() and \
+                       not d.name.lower() in item["topic"].lower():
+                        other_project_prefixes.add(folder_prefix)
+            except OSError:
+                pass
+
+    vault_pre = [
+        h for h in vault_pre_raw
+        if not any(h.get("note_path", "").startswith(p) for p in other_project_prefixes)
+    ][:5]
+
     vault_inject_lines = []
     if vault_pre:
         vault_inject_lines.append(
@@ -580,7 +614,7 @@ def _plan_build_tasks(
             "no need to re-search for them):"
         )
         _url_re = re.compile(r"https?://\S+")
-        for h in vault_pre[:5]:
+        for h in vault_pre:
             match_info = "path-match" if h["match_type"] == "path" else f"dist={h['distance']:.3f}"
             content_clean = _url_re.sub("[link]", h["content"])[:1200].strip()
             vault_inject_lines.append(
@@ -610,7 +644,10 @@ def _plan_build_tasks(
         f"What already exists in the vault: {vault_briefs or '(none)'}\n"
         f"Already completed tasks: {completed_briefs or '(none)'}\n\n"
         "Below are 6 required steps. Keep each title EXACTLY as given. "
-        "Write a project-specific description for each step. "
+        "For each step, START with the original description verbatim, then append "
+        "one sentence of project-specific context. Preserve ALL instructions in the "
+        "original description (tool names, output formats, 'Search Lazada first', etc.) — "
+        "do not paraphrase or drop them. "
         "If a step is already done (see 'Already completed'), set its description "
         "to 'Already done — <brief summary>' so Elvis skips redundant work.\n\n"
         f"Steps:\n{skeleton_lines}\n\n"
@@ -747,6 +784,29 @@ def record_surfaced_run(surfaced_id: int, run_id: str, db_path: str = DB_PATH) -
 
 
 # ---------------------------------------------------------------------------
+# Public API for intake pipeline
+# ---------------------------------------------------------------------------
+
+is_build_plan = _is_build_plan
+plan_build_tasks = _plan_build_tasks
+
+
+def read_step1_done(project_name: str, vault_root: str) -> bool:
+    """Return True if Requirements.md has step1_done: true in its frontmatter."""
+    req = Path(vault_root) / project_name / "Requirements.md"
+    if not req.exists():
+        return False
+    text = req.read_text(encoding="utf-8")
+    if not text.startswith("---"):
+        return False
+    try:
+        fm = yaml.safe_load(text.split("---")[1])
+        return bool(fm.get("step1_done"))
+    except Exception:
+        return False
+
+
+# ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
 
@@ -867,6 +927,111 @@ def second_brain_loop(db_path: str = DB_PATH) -> int:
             abs_note = _Path(VAULT_ROOT) / note_path
             abs_note.write_text(abs_note.read_text() + f"\n\n**Build plan:** [[{today}-{plan_slug}]]\n")
             print(f"[SecondBrain]   Build plan written → {plan_rel}")
+
+    return written
+
+
+def surface_only(db_path: str = DB_PATH) -> int:
+    """Surfacing pass only — no task planning or execution.
+    Topics already surfaced within the last 7 days are hard-deduped.
+    Returns the number of notes written."""
+    from datetime import timedelta
+
+    last_run = _last_run_at(db_path)
+    if not _materially_changed_since(last_run, db_path):
+        print(
+            f"[SecondBrain] Only {_count_changes(last_run, db_path)} events since {last_run};"
+            f" below threshold {SECOND_BRAIN_MATERIAL_CHANGE_THRESHOLD} — skipping."
+        )
+        return 0
+
+    ctx = get_week_dump(days=SECOND_BRAIN_RAW_WINDOW_DAYS, db_path=db_path)
+    llm = ChatOllama(
+        model=SECOND_BRAIN_MODEL,
+        base_url=OLLAMA_BASE_URL,
+        temperature=0.2,
+        streaming=False,
+    )
+
+    items = _pick_topics(ctx, llm)
+    if not items:
+        print("[SecondBrain] No topics surfaced this run.")
+        return 0
+
+    # Hard 7-day dedup — LLM already tries to avoid repeats but can't be trusted
+    cutoff = (datetime.now() - timedelta(days=7)).isoformat()
+    with sqlite3.connect(db_path) as _conn:
+        try:
+            recent_topics = {
+                row[0].lower().strip()
+                for row in _conn.execute(
+                    "SELECT topic FROM surfaced WHERE created_at >= ?", (cutoff,)
+                ).fetchall()
+            }
+        except sqlite3.OperationalError:
+            recent_topics = set()
+
+    deduped = []
+    for item in items:
+        norm = item["topic"].lower().strip()
+        if any(norm in rt or rt in norm for rt in recent_topics):
+            print(f"[SecondBrain] Skipping {item['topic']!r} — already surfaced within 7 days.")
+        else:
+            deduped.append(item)
+    items = deduped
+
+    if not items:
+        print("[SecondBrain] All topics already surfaced recently — nothing new to write.")
+        return 0
+
+    print(f"[SecondBrain] Picked {len(items)} topic(s):")
+    for it in items:
+        print(f"  - {it['topic']}  (signals: {it['source_signals']})")
+
+    today = datetime.now().strftime("%Y-%m-%d")
+    written = 0
+    for item in items:
+        evidence_pool: list[dict] = []
+        for rows in ctx["raw_by_source"].values():
+            evidence_pool.extend(rows)
+        evidence = _select_evidence(item["topic"], evidence_pool, db_path=db_path)
+
+        history = knn_history(
+            query=item.get("history_query", item["topic"]),
+            top_k=SECOND_BRAIN_HISTORY_TOP_K,
+            db_path=db_path,
+        )
+
+        full_context = {
+            "topic":           item["topic"],
+            "vault_knn":       knn_history(item["topic"], top_k=12, db_path=db_path),
+            "recent_edits":    get_recent_edits(days=14, db_path=db_path),
+            "engaged_history": get_engaged_surfacings(limit=20, db_path=db_path),
+            "completed_tasks": get_completed_tasks(limit=20, db_path=db_path),
+        }
+
+        body = _synthesize_note(item, evidence, history, llm, full_context)
+        if not body:
+            print(f"[SecondBrain] Empty note for {item['topic']!r}, skipping.")
+            continue
+
+        slug = _slugify(item["topic"])
+        try:
+            note_path = _write_note(slug, today, body, item["source_signals"])
+        except FileExistsError:
+            slug = f"{slug}-{datetime.now().strftime('%H%M')}"
+            note_path = _write_note(slug, today, body, item["source_signals"])
+
+        row_id = _record_surfaced(
+            topic=item["topic"],
+            source_signals=item["source_signals"],
+            reason=item["reason"],
+            note_path=note_path,
+            db_path=db_path,
+            full_context_json=_cap_full_context_json(full_context),
+        )
+        print(f"[SecondBrain] Surfaced #{row_id}: {item['topic']} → {note_path}")
+        written += 1
 
     return written
 

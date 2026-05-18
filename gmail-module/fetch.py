@@ -122,16 +122,18 @@ def fetch_inbox(max_results: int = INBOX_MAX) -> list:
     return emails
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Fetch Gmail inbox and store as vectors")
-    parser.add_argument(
-        "--count", type=int, default=INBOX_MAX,
-        help=f"Number of emails to fetch (default {INBOX_MAX})"
-    )
-    args = parser.parse_args()
+def main(count: int | None = None):
+    if count is None:
+        parser = argparse.ArgumentParser(description="Fetch Gmail inbox and store as vectors")
+        parser.add_argument(
+            "--count", type=int, default=INBOX_MAX,
+            help=f"Number of emails to fetch (default {INBOX_MAX})"
+        )
+        args = parser.parse_args()
+        count = args.count
 
-    print(f"\nFetching {args.count} emails from inbox...")
-    emails = fetch_inbox(max_results=args.count)
+    print(f"\nFetching {count} emails from inbox...")
+    emails = fetch_inbox(max_results=count)
 
     print(f"\nIngesting {len(emails)} emails into events table...")
     ok = 0

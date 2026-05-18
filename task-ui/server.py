@@ -12,6 +12,7 @@ import queue
 import sqlite3
 import sys
 import threading
+import yaml
 from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "chatbot"))
@@ -304,6 +305,10 @@ class ChatRequest(BaseModel):
     thread_id: str = "task-ui"
 
 
+class CreateThreadRequest(BaseModel):
+    project_name: str | None = None
+
+
 class NotesSaveRequest(BaseModel):
     path: str
     content: str
@@ -331,17 +336,24 @@ def chat_threads_list():
 
 
 @app.post("/api/chat/threads")
-def chat_create_thread():
+def chat_create_thread(body: CreateThreadRequest = None):
     import uuid
     from datetime import datetime, timezone
-    thread_id = f"ui-{uuid.uuid4().hex[:12]}"
+    body = body or CreateThreadRequest()
+    if body.project_name:
+        slug = body.project_name.lower().replace(" ", "-")
+        thread_id = f"project:{slug}-{uuid.uuid4().hex[:8]}"
+        title = body.project_name
+    else:
+        thread_id = f"ui-{uuid.uuid4().hex[:12]}"
+        title = "New conversation"
     now = datetime.now(timezone.utc).isoformat()
     with sqlite3.connect(_CAD_DB) as conn:
         conn.execute(
             "INSERT INTO chat_threads (thread_id, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
-            (thread_id, "New conversation", now, now),
+            (thread_id, title, now, now),
         )
-    return {"thread_id": thread_id, "title": "New conversation", "created_at": now, "updated_at": now}
+    return {"thread_id": thread_id, "title": title, "created_at": now, "updated_at": now}
 
 
 @app.delete("/api/chat/threads/{thread_id}")
@@ -371,16 +383,17 @@ def chat_history(thread_id: str = "task-ui"):
 @app.post("/api/chat")
 async def chat_send(body: ChatRequest):
     from langchain_core.messages import HumanMessage as _HM, AIMessage as _AM
-    from agent.chatbot import ask_chatbot, get_server_workflow
+    from agent.chatbot import ask_chatbot, get_server_workflow, get_project_workflow
     from core.config import CHATBOT_INTRO
     from datetime import datetime, timezone
 
-    wf = get_server_workflow()
+    is_project_thread = body.thread_id.startswith("project:")
+    wf = get_project_workflow() if is_project_thread else get_server_workflow()
     config = {"configurable": {"thread_id": body.thread_id}}
 
     state = wf.get_state(config)
     messages = []
-    if not state.values:
+    if not state.values and not is_project_thread:
         messages.append(_AM(content=CHATBOT_INTRO))
     messages.append(_HM(body.message))
 
@@ -758,6 +771,220 @@ async def notes_chat(body: NotesChatRequest):
             event = await loop.run_in_executor(None, q.get)
             if event is None:
                 yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                break
+            yield f"data: {json.dumps(event)}\n\n"
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Project intake endpoints
+# ---------------------------------------------------------------------------
+
+class IntakeFinishRequest(BaseModel):
+    project_name: str
+    messages: list[str]
+
+
+def _run_build_plan(project_name: str, note_body: str) -> None:
+    try:
+        from services.second_brain import plan_build_tasks
+        from agent.task_runner import start_run, resume_run, consolidate_run
+        from langchain_ollama import ChatOllama
+        from core.config import SECOND_BRAIN_MODEL, OLLAMA_BASE_URL
+        from services.obsidian import VAULT_ROOT as _VR2
+
+        item = {"topic": project_name, "reason": "project intake"}
+        llm = ChatOllama(model=SECOND_BRAIN_MODEL, base_url=OLLAMA_BASE_URL, temperature=0.3)
+        full_context: dict = {"vault_knn": [], "completed_tasks": []}
+        steps = plan_build_tasks(item, note_body, full_context, llm)
+        if not steps:
+            return
+        task_descs = [f"[{s['sequence']}] {s['title']}: {s['description']}" for s in steps]
+        run_id = start_run(task_descs)
+        for _ in resume_run(run_id):
+            pass
+        plan_body = consolidate_run(run_id)
+        import datetime as _dt
+        today = _dt.date.today().isoformat()
+        slug = project_name.lower().replace(" ", "-")[:40]
+        note_rel = f"elvis-surfaced/{today}-{slug}-build-plan.md"
+        vault_root = Path(_VR2)
+        (vault_root / "elvis-surfaced").mkdir(exist_ok=True)
+        (vault_root / note_rel).write_text(plan_body, encoding="utf-8")
+        print(f"[Intake] Build plan written: {note_rel}")
+    except Exception as exc:
+        print(f"[Intake] _run_build_plan error: {exc}")
+
+
+@app.get("/api/intake/projects")
+def intake_list_projects():
+    from services.obsidian import VAULT_ROOT as _VR
+    vault_root = Path(_VR)
+    results = []
+    for d in sorted(vault_root.iterdir()):
+        if not d.is_dir() or d.name.startswith("."):
+            continue
+        req = d / "Requirements.md"
+        if not req.exists():
+            continue
+        try:
+            text = req.read_text(encoding="utf-8")
+            if "elvis: project-intake" in text:
+                results.append({"name": d.name})
+        except OSError:
+            continue
+    return results
+
+
+@app.get("/api/intake/project/{name}")
+def intake_get_project(name: str):
+    from services.obsidian import VAULT_ROOT as _VR
+    vault_root = Path(_VR)
+    project_dir = vault_root / name
+    if not project_dir.is_dir():
+        raise HTTPException(status_code=404, detail="project not found")
+    paths = [f"{name}/{f.name}" for f in sorted(project_dir.glob("*.md"))]
+    return {"name": name, "paths": paths}
+
+
+@app.post("/api/intake/finish")
+def intake_finish(body: IntakeFinishRequest):
+    import datetime as _dt
+    from langchain_ollama import ChatOllama
+    from core.config import SECOND_BRAIN_MODEL, OLLAMA_BASE_URL
+    from services.obsidian import VAULT_ROOT as _VR
+
+    project_name = body.project_name.strip()
+    if not project_name:
+        raise HTTPException(status_code=400, detail="project_name is required")
+
+    dump_text = "\n".join(body.messages)
+    vault_root = Path(_VR)
+    project_dir = vault_root / project_name
+    project_dir.mkdir(parents=True, exist_ok=True)
+
+    llm = ChatOllama(model=SECOND_BRAIN_MODEL, base_url=OLLAMA_BASE_URL, temperature=0.3)
+    system = (
+        "You are Elvis. Given a raw project dump, do two things:\n"
+        "1. Extract a structured requirements note body in markdown (no frontmatter).\n"
+        "   Sections: Goals, Owned Components, Missing / TBD, Constraints, Budget.\n"
+        "2. List 3-5 flagged concerns needing clarification. Be specific.\n"
+        'Output strict JSON: {"note": "...", "concerns": [...]}'
+    )
+    raw = llm.invoke(f"{system}\n\nDump:\n{dump_text}").content.strip()
+
+    try:
+        cleaned = raw
+        if cleaned.startswith("```"):
+            cleaned = cleaned.split("```")[1]
+            if cleaned.startswith("json"):
+                cleaned = cleaned[4:]
+        parsed = json.loads(cleaned)
+        note_body = parsed.get("note", dump_text)
+        concerns = parsed.get("concerns", [])
+    except (json.JSONDecodeError, ValueError):
+        note_body = dump_text
+        concerns = ["Could not parse requirements — please review the dump manually."]
+
+    today = _dt.date.today().isoformat()
+    fm = {
+        "elvis": "project-intake",
+        "project": project_name,
+        "created": today,
+        "step1_done": True,
+    }
+    fm_yaml = yaml.dump(fm, allow_unicode=True, default_flow_style=False).strip()
+    req_path = project_dir / "Requirements.md"
+    req_path.write_text(f"---\n{fm_yaml}\n---\n\n{note_body}\n", encoding="utf-8")
+
+    threading.Thread(
+        target=_run_build_plan, args=(project_name, note_body), daemon=True
+    ).start()
+
+    return {"concerns": concerns, "note_path": f"{project_name}/Requirements.md"}
+
+
+class RunBuildPlanRequest(BaseModel):
+    project_name: str
+
+
+@app.post("/api/intake/run-build-plan")
+async def intake_run_build_plan(body: RunBuildPlanRequest):
+    import contextlib, io as _io
+
+    project_name = body.project_name.strip()
+    if not project_name:
+        raise HTTPException(status_code=400, detail="project_name required")
+
+    q: queue.Queue[dict | None] = queue.Queue()
+
+    def worker():
+        class _TeeWriter(_io.TextIOBase):
+            def __init__(self):
+                self._buf = ""
+            def write(self, s: str) -> int:
+                self._buf += s
+                while "\n" in self._buf:
+                    line, self._buf = self._buf.split("\n", 1)
+                    if line.strip():
+                        q.put({"type": "log", "message": line})
+                return len(s)
+            def flush(self):
+                if self._buf.strip():
+                    q.put({"type": "log", "message": self._buf})
+                    self._buf = ""
+
+        try:
+            from services.second_brain import plan_build_tasks
+            from agent.task_runner import start_run, resume_run, consolidate_run
+            from langchain_ollama import ChatOllama
+            from core.config import SECOND_BRAIN_MODEL, OLLAMA_BASE_URL
+            from services.obsidian import VAULT_ROOT as _VR
+
+            vault_root = Path(_VR)
+            req_path = vault_root / project_name / "Requirements.md"
+            note_body = req_path.read_text(encoding="utf-8") if req_path.exists() else ""
+
+            item = {"topic": project_name, "reason": "project intake"}
+            llm = ChatOllama(model=SECOND_BRAIN_MODEL, base_url=OLLAMA_BASE_URL, temperature=0.3)
+            q.put({"type": "log", "message": "Planning build steps…"})
+            steps = plan_build_tasks(item, note_body, {"vault_knn": [], "completed_tasks": []}, llm)
+            if not steps:
+                q.put({"type": "error", "message": "Could not generate build plan steps"})
+                return
+
+            q.put({"type": "log", "message": f"{len(steps)} steps planned — starting run"})
+            task_descs = [f"[{s['sequence']}] {s['title']}: {s['description']}" for s in steps]
+            run_id = start_run(task_descs)
+
+            tee = _TeeWriter()
+            with contextlib.redirect_stdout(tee):
+                for _ in resume_run(run_id):
+                    pass
+            tee.flush()
+
+            plan_body = consolidate_run(run_id)
+            note_rel = f"{project_name}/Build Plan.md"
+            (vault_root / project_name).mkdir(exist_ok=True)
+            (vault_root / note_rel).write_text(plan_body, encoding="utf-8")
+            q.put({"type": "done", "note_path": note_rel})
+        except Exception as exc:
+            q.put({"type": "error", "message": str(exc)})
+        finally:
+            q.put(None)
+
+    threading.Thread(target=worker, daemon=True).start()
+
+    async def stream():
+        loop = asyncio.get_event_loop()
+        while True:
+            event = await loop.run_in_executor(None, q.get)
+            if event is None:
                 break
             yield f"data: {json.dumps(event)}\n\n"
 

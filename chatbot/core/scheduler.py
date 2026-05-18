@@ -183,11 +183,11 @@ def create_scheduler(db_path: str = None) -> BackgroundScheduler:
         replace_existing=True,
     )
 
-    # Daily second-brain surfacing at 09:00
+    # Daily second-brain surfacing at 09:00 — surfacer only, no task execution
     def _second_brain():
-        from services.second_brain import second_brain_loop
+        from services.second_brain import surface_only
         from core.config import DB_PATH as _DB
-        n = second_brain_loop(db_path or _DB)
+        n = surface_only(db_path or _DB)
         print(f"[Scheduler] Second brain: surfaced {n} note(s)")
 
     scheduler.add_job(

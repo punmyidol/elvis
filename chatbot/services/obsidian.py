@@ -22,7 +22,7 @@ _cfg_spec.loader.exec_module(_cfg_mod)
 
 from indexer import VaultIndexer
 from rag.vector import init_obsidian_tables, search_obsidian_vectors
-from rag.crud import read_note, stage_update, resolve_note_path
+from rag.crud import read_note, stage_create, stage_update, resolve_note_path
 from rag.staging import StagingArea
 from config import VAULT_ROOT
 
@@ -68,7 +68,17 @@ def update_obsidian_note_logic(note_ref: str, body: str, tags: list = None) -> s
         area = StagingArea(_STAGING_DIR, VAULT_ROOT)
         area.apply(op.note_path)
         return f"Updated note: {op.note_path}"
-    except (FileNotFoundError, ValueError) as e:
+    except FileNotFoundError:
+        # Note doesn't exist yet — create it instead
+        rel = note_ref if note_ref.endswith(".md") else note_ref + ".md"
+        fm = {"tags": tags} if tags else {}
+        try:
+            op = stage_create(rel, fm, body, VAULT_ROOT, _STAGING_DIR)
+            StagingArea(_STAGING_DIR, VAULT_ROOT).apply(op.note_path)
+            return f"Created note: {op.note_path}"
+        except Exception as create_err:
+            return f"Failed to create note: {create_err}"
+    except ValueError as e:
         return str(e)
 
 

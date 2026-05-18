@@ -8,7 +8,7 @@ from typing import Generator
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_ollama import ChatOllama
 
-from agent.chatbot import ask_chatbot, _create_llm, _compile_workflow
+from agent.chatbot import ask_chatbot, _compile_project_workflow, _PROJECT_TOOLS
 from core.config import OLLAMA_MODEL, OLLAMA_BASE_URL, DB_PATH
 
 RUNS_DIR = Path(__file__).parent.parent / "runs"
@@ -82,8 +82,12 @@ def resume_run(run_id: str) -> Generator[str, None, None]:
     import sqlite3
     from langgraph.checkpoint.sqlite import SqliteSaver
 
-    _workflow = _compile_workflow(
-        _create_llm(),
+    _task_llm = ChatOllama(
+        model=OLLAMA_MODEL, base_url=OLLAMA_BASE_URL,
+        temperature=0.5, streaming=True, reasoning=False, num_ctx=16384,
+    ).bind_tools(_PROJECT_TOOLS)
+    _workflow = _compile_project_workflow(
+        _task_llm,
         SqliteSaver(sqlite3.connect(DB_PATH, check_same_thread=False)),
     )
 

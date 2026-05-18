@@ -131,3 +131,12 @@ export interface NotesChatEvent {
   text?: string
   message?: string
 }
+
+export interface IntakeProject { name: string }
+export interface IntakeFinishResponse { concerns: string[]; note_path: string }
+export interface IntakeProjectDetail { name: string; paths: string[] }
+
+export type BuildPlanEvent =
+  | { type: 'log'; message: string }
+  | { type: 'done'; note_path: string }
+  | { type: 'error'; message: string }

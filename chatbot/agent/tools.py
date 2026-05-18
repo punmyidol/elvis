@@ -366,11 +366,13 @@ def read_obsidian_note(note_ref: str) -> str:
 @tool
 def update_obsidian_note(note_ref: str, body: str, tags: list = None) -> str:
     """
-    Overwrite the body of an existing Obsidian note.
-    note_ref: exact relative path or title substring to identify the note.
-    body: the full new Markdown content for the note body.
-    tags: optional list of tags to set in frontmatter (replaces existing tags).
-    Use this when the user asks to edit, update, or rewrite a note.
+    Create or overwrite an Obsidian note (Markdown file in the vault).
+    Use this for ANY text content that can be represented in Markdown:
+    plans, timelines, summaries, decisions, notes, step-by-step guides, build plans, meeting notes.
+    note_ref: vault-relative path (e.g. "Helmet Detection System/Timeline.md") or title substring.
+    body: full Markdown content for the note body.
+    tags: optional list of tags to set in frontmatter.
+    ALWAYS prefer this over write_document for anything that can be written in Markdown.
     """
     from services.obsidian import update_obsidian_note_logic
     return update_obsidian_note_logic(note_ref, body, tags)
@@ -419,8 +421,10 @@ def read_document(filename: str) -> str:
 @tool
 def write_document(filename: str, content: str) -> str:
     """
-    Create a new file or overwrite an existing one with the given content.
-    Use this to save a note, schedule, or list.
+    Write a file to the documents directory (NOT the Obsidian vault).
+    Use ONLY for non-Markdown content: CSV tables, raw data, spreadsheets, binary output,
+    or files explicitly meant for the documents folder.
+    For anything writable in Markdown (plans, timelines, notes, guides), use update_obsidian_note instead.
     """
     from services.documents import write_document_logic
     return write_document_logic(filename, content)
@@ -444,6 +448,43 @@ def move_document(old_name: str, new_name: str) -> str:
     return move_document_logic(old_name, new_name)
 
 
+@tool
+def update_requirements(project_name: str, updates: str) -> str:
+    """Merge clarification answers into the project's Requirements.md.
+    Call this when you have gathered enough clarifications to finalize requirements."""
+    import yaml
+    from pathlib import Path
+    from langchain_ollama import ChatOllama
+    from services.obsidian import VAULT_ROOT, read_obsidian_note_logic
+    from core.config import OLLAMA_MODEL, OLLAMA_BASE_URL
+
+    note_ref = f"{project_name}/Requirements.md"
+    existing = read_obsidian_note_logic(note_ref)
+    if "not found" in existing.lower():
+        return f"No Requirements.md found for project '{project_name}'."
+
+    llm = ChatOllama(model=OLLAMA_MODEL, base_url=OLLAMA_BASE_URL, temperature=0.3)
+    prompt = (
+        f"You are merging clarification answers into a requirements note.\n"
+        f"Existing note:\n{existing}\n\n"
+        f"New clarifications:\n{updates}\n\n"
+        f"Rewrite only the note body (no frontmatter). Preserve all existing sections. "
+        f"Fill in missing/TBD items with the clarified answers. Output markdown only."
+    )
+    new_body = llm.invoke(prompt).content.strip()
+
+    vault_path = Path(VAULT_ROOT) / project_name / "Requirements.md"
+    text = vault_path.read_text(encoding="utf-8")
+    if text.startswith("---"):
+        parts = text.split("---", 2)
+        fm = yaml.safe_load(parts[1]) or {}
+    else:
+        fm = {}
+    fm_yaml = yaml.dump(fm, allow_unicode=True, default_flow_style=False).strip()
+    vault_path.write_text(f"---\n{fm_yaml}\n---\n\n{new_body}\n", encoding="utf-8")
+    return f"Requirements updated for '{project_name}'."
+
+
 # ---------------------------------------------------------------------------
 # Exported tool list
 # ---------------------------------------------------------------------------
@@ -454,5 +495,5 @@ ELVIS_TOOLS = [
     remember, show_memories, delete_memory,
     search_gmail, search_obsidian, get_today_plan, read_obsidian_note, update_obsidian_note, search_documents,
     list_documents, read_document, write_document, delete_document, move_document,
-    generate_cad_model,
+    generate_cad_model, update_requirements,
 ]

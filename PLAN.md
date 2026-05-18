@@ -1,132 +1,194 @@
 # New Project Intake — Chat-to-Vault-to-Second-Brain
 
-When Pun starts a new project, Elvis should guide a structured intake conversation,
-write clean notes into Obsidian, then immediately run the second brain loop to
-produce a build plan — all from the existing chat tab.
+When Pun starts a new project, Elvis guides a two-phase intake: a silent dump
+followed by a clarification chat. The result is a structured requirements note
+in the Obsidian vault. The build plan pipeline runs immediately after.
 
 ---
 
-## What it does
+## Full flow
 
-1. Pun clicks **New Project** (new button in chat tab, next to Daily Briefing / Obsidian Only)
-2. Elvis switches into intake mode for that thread — asks structured questions:
-   goals, components already owned, constraints, budget, environment
-3. When Pun says they're done, Elvis extracts the structured data and writes a
-   clean project note to the Obsidian vault (e.g. `Helmet Detection/Project.md`)
-4. Elvis immediately calls `second_brain_loop()` — which picks up the new note
-   as a fresh signal and runs the 6-step build plan
-5. The build plan note appears in `elvis-surfaced/{date}-{slug}-build-plan.md`
-6. Elvis tells Pun where the notes landed
+### New project
+
+1. Pun clicks **New Project** in the chat tab
+2. A prompt asks for the project name
+3. Elvis creates `{project_name}/` folder in the vault root
+4. UI enters **dump mode** — input shows "Dump your ideas…", Elvis does not respond
+5. Pun types freely: ideas, assumptions, components, constraints, whatever order
+6. Pun clicks **Done**
+7. Server parses dump → writes `{project_name}/Requirements.md` → returns flagged concerns
+8. Elvis's flagged concerns appear as a single assistant message:
+   ```
+   I need clarification on:
+   - Power source: 220V wall or battery backup?
+   - Enclosure: weatherproof or indoor only?
+   - Budget: total or per-component?
+   ```
+9. Pun answers in normal chat (Elvis responds, asks follow-ups if needed)
+10. When clarification is complete, Elvis calls the `update_requirements` tool —
+    which merges the answers into `Requirements.md`
+11. Elvis confirms: "Requirements updated. Build plan is running."
+12. Build plan pipeline runs immediately in background (steps 2–6) →
+    writes `elvis-surfaced/{date}-{slug}-build-plan.md`
+
+### Continue existing project
+
+1. Pun clicks **Continue Project** in the chat tab
+2. A dropdown lists existing project folders from the vault root
+3. Pun selects a project
+4. Elvis receives a system message listing the project's file paths:
+   ```
+   Project: {project_name}
+   Files in vault:
+   - {project_name}/Requirements.md
+   - {project_name}/Hardware.md
+   - {project_name}/Shopping List.md
+   ```
+5. Elvis uses obsidian CRUD tools to read files on demand during chat
+6. Normal chat — Pun can add information, ask questions, request updates
 
 ---
 
-## Files to change
+## UI — `ChatView.tsx`
 
-| File | Change |
-|---|---|
-| `task-ui/frontend/src/components/ChatView.tsx` | Add "New Project" button; send intake-start message when clicked |
-| `task-ui/server.py` | Add `/intake/start` endpoint and `/intake/finish` endpoint |
-| `chatbot/agent/chatbot.py` | Add intake mode: different system prompt when thread is flagged as intake |
-| `chatbot/services/second_brain.py` | Expose `run_for_note(note_path)` — runs the loop targeting a specific new note |
-
----
-
-## 1. UI — `ChatView.tsx`
-
-Add a third button in the `flex gap-2` quick-actions div:
+Replace the single "New Project" button with two buttons:
 
 ```tsx
-<button
-  onClick={handleNewProject}
-  disabled={streaming || !threadId}
-  className="px-3 py-1 text-[11px] rounded-full border border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
->
-  New Project
-</button>
+<button onClick={handleNewProject} ...>New Project</button>
+<button onClick={handleContinueProject} ...>Continue Project</button>
 ```
 
-`handleNewProject` sends a fixed opening message to the chat:
-```
-__INTAKE_START__
-```
+### New Project flow
 
-The double-underscore prefix marks it as a system trigger, not user text.
-The server intercepts it and sets the thread's mode to `intake`.
+- Clicking **New Project** opens an inline name input (same row, replaces buttons temporarily)
+- Pun types project name, hits Enter
+- UI switches to dump mode:
+  - Input placeholder changes to "Dump your ideas… (click Done when finished)"
+  - **Done** button appears, replacing the two project buttons
+  - No assistant bubble appears for any message Pun types
+- Clicking **Done** triggers analysis:
+  - UI exits dump mode, restores normal chat appearance
+  - Sends all dumped messages to `/api/intake/finish` as a batch
+  - Elvis's flagged concerns appear as a single assistant message
+  - Chat continues normally from here
+
+### Continue Project flow
+
+- Clicking **Continue Project** opens a dropdown populated from `/api/intake/projects`
+- Selecting a project calls `GET /api/intake/project/{name}` which returns the
+  list of `.md` file paths in the project folder (not their contents)
+- A system message is prepended to the thread:
+  ```
+  Project: {project_name}
+  Files in vault:
+  - {project_name}/Requirements.md
+  - {project_name}/Hardware.md
+  ```
+- Elvis reads files on demand via `read_obsidian_note` during chat
 
 ---
 
-## 2. Server — `server.py`
+## Server — `server.py`
 
-### 2.1 Thread mode tracking
+### `GET /api/intake/projects`
 
-Add a simple in-memory dict:
+Returns project folders whose `Requirements.md` has `elvis: project-intake`
+frontmatter. The frontmatter is always server-written so this filter is reliable:
+
 ```python
-_thread_modes: dict[str, str] = {}  # thread_id → "intake" | "normal"
+@app.get("/api/intake/projects")
+def list_projects():
+    vault_root = Path(VAULT_ROOT)
+    results = []
+    for d in sorted(vault_root.iterdir()):
+        if not d.is_dir() or d.name.startswith("."):
+            continue
+        req = d / "Requirements.md"
+        if req.exists() and "elvis: project-intake" in req.read_text():
+            results.append({"name": d.name})
+    return results
 ```
 
-When the chat endpoint receives `__INTAKE_START__`, set `_thread_modes[thread_id] = "intake"`.
-When the chat endpoint receives `__INTAKE_DONE__`, call `_finish_intake(thread_id, messages)`.
+### `GET /api/intake/project/{name}`
 
-### 2.2 `_finish_intake(thread_id, messages)`
+Returns a list of `.md` file paths in the project folder — not their contents:
 
-1. Extract the conversation history for that thread
-2. Call Elvis one more time with a system prompt that extracts structured JSON:
-   ```
-   Extract from this conversation: project name, goals (list), owned components
-   (list with prices if known), missing components, constraints, budget.
-   Output strict JSON only.
-   ```
-3. Write the note to vault (see §4)
-4. Call `second_brain_loop()` in a background thread
-5. Send a final message back to the chat: "Project note written to vault. Build plan is running in the background."
-
----
-
-## 3. Intake system prompt — `chatbot.py`
-
-In `chatbot_node`, check if the thread is in intake mode:
 ```python
-if _thread_modes.get(thread_id) == "intake":
-    system_prompt = _build_intake_prompt()
-else:
-    system_prompt = _build_system_prompt(mems)
+@app.get("/api/intake/project/{name}")
+def get_project(name: str):
+    project_dir = Path(VAULT_ROOT) / name
+    if not project_dir.is_dir():
+        raise HTTPException(status_code=404)
+    paths = [f"{name}/{f.name}" for f in sorted(project_dir.glob("*.md"))]
+    return {"name": name, "paths": paths}
 ```
 
-`_build_intake_prompt()` replaces the normal system prompt with one focused on
-intake — no tool calls, just conversation:
+### `POST /api/intake/finish`
 
-```
-You are Elvis helping Pun start a new project. Ask structured questions one at a time:
-1. What is the project? (one sentence)
-2. What do you already own? (list components and prices if known)
-3. What is missing or unknown?
-4. Physical constraints: environment (indoor/outdoor), power source, enclosure?
-5. Budget?
-6. Any deadlines or other constraints?
+Receives the project name and all dumped messages:
 
-After each answer, confirm what you heard and ask the next question.
-When all questions are answered, say exactly: "Got it. Type 'done' when you're ready to write the notes."
-Do not call any tools. Do not write notes yet.
-```
-
-When Pun types "done", the frontend sends `__INTAKE_DONE__` and the server
-calls `_finish_intake`.
+1. **Create vault folder** — `mkdir {vault_root}/{project_name}` if not exists
+2. **LLM call** (`qwen2.5:14b`) — parses dump into note body + flagged concerns.
+   LLM generates content only, no frontmatter:
+   ```
+   System: You are Elvis. Given a raw project dump, do two things:
+   1. Extract a structured requirements note body in markdown (no frontmatter).
+      Sections: Goals, Owned Components, Missing / TBD, Constraints, Budget.
+   2. List 3–5 flagged concerns needing clarification. Be specific.
+   Output strict JSON: {"note": "...", "concerns": [...]}
+   ```
+3. **Server writes frontmatter** — never the LLM:
+   ```python
+   fm = {
+       "elvis": "project-intake",
+       "project": project_name,
+       "created": today,
+       "step1_done": True,
+   }
+   stage_create(rel_path, fm, body, VAULT_ROOT, _STAGING_DIR)
+   ```
+4. **Trigger build plan** in background thread (see Second Brain Integration)
+5. **Return** `{"concerns": [...], "note_path": "..."}` — frontend displays
+   concerns as Elvis's first reply
 
 ---
 
-## 4. Vault note format
+## `update_requirements` tool
 
-Write to `{project_name}/{project_name}.md` in the vault root (not `elvis-surfaced/`):
+Elvis calls this tool at the end of the clarification chat when it has enough
+information to finalize requirements. It is an Elvis tool (in `agent/tools.py`),
+not a server endpoint — so Elvis decides when to call it, not the user.
+
+```python
+@tool
+def update_requirements(project_name: str, updates: str) -> str:
+    """Merge clarification answers into the project's Requirements.md."""
+```
+
+Internally:
+1. Reads existing `{project_name}/Requirements.md`
+2. LLM call (`qwen2.5:14b`): merges `updates` text into the existing note body
+3. Rewrites the file, preserving server-written frontmatter
+4. Returns confirmation
+
+This replaces the `/api/intake/update` server endpoint — Elvis owns the timing.
+
+---
+
+## Vault note format
+
+`{project_name}/Requirements.md`:
 
 ```markdown
 ---
-elvis: project-intake
+elvis: project-intake   ← written by server, never LLM
+project: {project_name}
 created: {date}
+step1_done: true
 ---
 
 ## Goals
-- {goal 1}
-- {goal 2}
+- {goal}
 
 ## Owned Components
 | Item | Price (THB) |
@@ -137,42 +199,163 @@ created: {date}
 - {item}
 
 ## Constraints
-- Environment: {env}
-- Power: {power}
-- Budget: {budget} THB
+- Environment: {value}
+- Power: {value}
+- Enclosure: {value}
+
+## Budget
+{amount} THB
 ```
 
-Use `stage_create` + `StagingArea.apply` (existing infrastructure).
+---
+
+## Second brain integration
+
+### Immediate trigger
+
+After writing `Requirements.md` in `/api/intake/finish`, call the build plan
+pipeline directly in a background thread — skip discovery entirely:
+
+```python
+import threading
+from services.second_brain import plan_build_tasks, is_build_plan
+from agent.task_runner import start_run, resume_run, consolidate_run
+
+def _run_build_plan(project_name, note_body):
+    item = {"topic": project_name, "reason": "project intake"}
+    full_context = {"vault_knn": [], "completed_tasks": []}
+    if not is_build_plan(item):
+        return
+    steps = plan_build_tasks(item, note_body, full_context, llm)
+    if not steps:
+        return
+    run_id = start_run([f"[{s['sequence']}] {s['title']}: {s['description']}" for s in steps])
+    for _ in resume_run(run_id):
+        pass
+    plan_body = consolidate_run(run_id)
+    # write build plan note to vault via stage_create
+    ...
+
+threading.Thread(target=_run_build_plan, args=(project_name, body), daemon=True).start()
+```
+
+`is_build_plan` and `plan_build_tasks` are public functions in `second_brain.py`
+(no underscore prefix).
+
+### `step1_done` check
+
+`read_step1_done` is a new public function in `second_brain.py`. It reads
+the frontmatter directly from the vault file — not from the synthesized
+surfaced note (which doesn't carry frontmatter):
+
+```python
+def read_step1_done(project_name: str, vault_root: str) -> bool:
+    req = Path(vault_root) / project_name / "Requirements.md"
+    if not req.exists():
+        return False
+    text = req.read_text()
+    if not text.startswith("---"):
+        return False
+    try:
+        fm = yaml.safe_load(text.split("---")[1])
+        return bool(fm.get("step1_done"))
+    except Exception:
+        return False
+```
+
+Called in `plan_build_tasks`. If it returns True, step 1's description is set
+to `"Already done — see {project_name}/Requirements.md"` so the executor skips it.
 
 ---
 
-## 5. Triggering the second brain loop
+## Model
 
-After the note is written, call `second_brain_loop()` in a background thread.
-The new vault note will appear as a fresh obsidian signal — the loop's
-`_materially_changed_since` check will pass because a new file was just written.
-
-The loop will pick up the project topic, detect it as a build plan
-(via `_is_build_plan`), and run the 6-step pipeline.
-
-No changes to `second_brain.py` needed — it already handles this correctly.
+| Call | Model | Reason |
+|---|---|---|
+| Intake parsing (`/api/intake/finish`) | `qwen2.5:14b` (`SECOND_BRAIN_MODEL`) | Structured JSON output, needs reliability |
+| `update_requirements` tool | `qwen2.5:14b` (`SECOND_BRAIN_MODEL`) | Merging text into structured note |
+| Project agent chat (Continue Project) | `qwen2.5:7b` (`OLLAMA_MODEL`) | Interactive, speed matters |
 
 ---
 
-## 6. Build order
+## Project agent
 
-1. `ChatView.tsx` — add New Project button + `handleNewProject`
-2. `server.py` — add `_thread_modes`, intercept `__INTAKE_START__` / `__INTAKE_DONE__`, `_finish_intake`
-3. `chatbot.py` — add `_build_intake_prompt`, check thread mode in `chatbot_node`
-4. Vault note writer in `_finish_intake` using existing `stage_create`
-5. Background `second_brain_loop()` call after note is written
-6. Test end-to-end: click button → chat → "done" → check vault note → check build plan
+During **Continue Project** chat, Elvis runs as a restricted agent — no
+calendar, news, Gmail, or CAD tools:
+
+```python
+_PROJECT_TOOLS = [
+    web_search,
+    fetch_url,
+    search_obsidian,
+    read_obsidian_note,
+    write_obsidian_note,
+    search_documents,
+    read_document,
+    write_document,
+    move_document,
+    delete_document,
+    update_requirements,
+]
+```
+
+`_create_project_llm()` binds only these tools. `_compile_project_workflow()`
+uses it with the same thread-safe singleton pattern as `get_server_workflow()`:
+
+```python
+_project_workflow = None
+_project_wf_lock = threading.Lock()
+
+def get_project_workflow():
+    global _project_workflow
+    with _project_wf_lock:
+        if _project_workflow is None:
+            conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+            checkpointer = SqliteSaver(conn)
+            _project_workflow = _compile_project_workflow(_create_project_llm(), checkpointer)
+    return _project_workflow
+```
+
+In `server.py`, threads with a `project:` prefix on `thread_id` use
+`get_project_workflow()` instead of `get_server_workflow()`.
+
+Benefits:
+- Tool schema drops from ~9800 chars to ~4000 chars — more context budget
+- LLM less likely to call irrelevant tools mid-project chat
 
 ---
 
-## 7. Out of scope
+## Files to change
 
-- Persisting thread mode across server restarts (in-memory is fine for single-user)
-- A "resume intake" flow if the user closes the tab mid-intake
-- Editing the intake note after the fact via UI (Obsidian handles that)
+| File | Change |
+|---|---|
+| `task-ui/frontend/src/components/ChatView.tsx` | New Project + Continue Project buttons, dump mode UI, Done button |
+| `task-ui/frontend/src/api.ts` | `listProjects`, `getProject`, `finishIntake` |
+| `task-ui/frontend/src/types.ts` | `IntakeProject`, `IntakeFinishResponse` types |
+| `task-ui/server.py` | `/api/intake/projects`, `/api/intake/project/{name}`, `/api/intake/finish`; project thread routing |
+| `chatbot/agent/tools.py` | `update_requirements` tool |
+| `chatbot/agent/chatbot.py` | `_PROJECT_TOOLS`, `_create_project_llm()`, `_compile_project_workflow()`, `get_project_workflow()`; project thread detection |
+| `chatbot/services/second_brain.py` | Rename `_is_build_plan` → `is_build_plan`, `_plan_build_tasks` → `plan_build_tasks`; add `read_step1_done()` |
+
+---
+
+## Build order
+
+1. `second_brain.py` — make `is_build_plan`, `plan_build_tasks` public; add `read_step1_done()`
+2. `tools.py` — `update_requirements` tool
+3. `server.py` — `/api/intake/projects` + `/api/intake/finish` (with immediate build plan trigger)
+4. `ChatView.tsx` — New Project button, name input, dump mode, Done button
+5. `api.ts` + `types.ts` — intake API calls
+6. `chatbot.py` — `_PROJECT_TOOLS`, `_create_project_llm()`, `get_project_workflow()`
+7. `server.py` — project thread routing; `/api/intake/project/{name}`
+8. `ChatView.tsx` — Continue Project dropdown + file path injection
+9. Test end-to-end: new project → dump → concerns → answers → `update_requirements` called → build plan runs → Continue Project loads file list
+
+---
+
+## Out of scope
+
+- Persisting dump state if Pun closes tab mid-dump (in-memory is fine)
 - Multiple simultaneous intake sessions
+- Editing Requirements.md via UI after it's written (Obsidian handles that)
+- Deleting projects via UI

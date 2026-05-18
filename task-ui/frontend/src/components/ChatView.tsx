@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { createChatThread, deleteChatThread, fetchChatHistory, fetchChatThreads, sendChatMessage } from '../api'
+import { createChatThread, deleteChatThread, fetchChatHistory, fetchChatThreads, sendChatMessage, listProjects, getProject, finishIntake, runBuildPlan } from '../api'
 import { ChatMarkdownContent } from './FileViewer'
-import type { ChatEvent, ChatMessage, ChatThread } from '../types'
+import type { BuildPlanEvent, ChatEvent, ChatMessage, ChatThread, IntakeProject } from '../types'
 
 const WELCOME: ChatMessage = {
   role: 'assistant',
@@ -127,6 +127,23 @@ export default function ChatView() {
   const [obsidianOnly, setObsidianOnly] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const nameInputRef = useRef<HTMLInputElement>(null)
+
+  // Project intake state
+  const [intakeMode, setIntakeMode] = useState<'idle' | 'naming' | 'dumping'>('idle')
+  const [projectName, setProjectName] = useState('')
+  const [dumpMessages, setDumpMessages] = useState<string[]>([])
+  const [intakeLoading, setIntakeLoading] = useState(false)
+  const [intakeContext, setIntakeContext] = useState<{ projectName: string; concerns: string[] } | null>(null)
+
+  // Continue project state
+  const [projects, setProjects] = useState<IntakeProject[]>([])
+  const [projectPickerOpen, setProjectPickerOpen] = useState(false)
+  const pickerRef = useRef<HTMLDivElement>(null)
+
+  // Active project (set after new project intake or continuing a project)
+  const [activeProject, setActiveProject] = useState<string | null>(null)
+  const [buildPlanRunning, setBuildPlanRunning] = useState(false)
 
   const loadThreads = async () => {
     try {
@@ -166,9 +183,32 @@ export default function ChatView() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, streamingText])
 
+  // Focus name input when entering naming mode
+  useEffect(() => {
+    if (intakeMode === 'naming') {
+      setTimeout(() => nameInputRef.current?.focus(), 50)
+    }
+  }, [intakeMode])
+
+  // Close picker on outside click
+  useEffect(() => {
+    if (!projectPickerOpen) return
+    const handler = (e: MouseEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
+        setProjectPickerOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [projectPickerOpen])
+
   const handleSelectThread = (id: string) => {
     if (id === threadId || streaming) return
     setError(null)
+    setIntakeMode('idle')
+    setDumpMessages([])
+    setIntakeContext(null)
+    setActiveProject(null)
     setThreadId(id)
   }
 
@@ -190,6 +230,8 @@ export default function ChatView() {
 
   const handleNew = async () => {
     if (streaming) return
+    setIntakeMode('idle')
+    setDumpMessages([])
     try {
       const t = await createChatThread()
       setThreads(prev => [t, ...prev])
@@ -200,15 +242,16 @@ export default function ChatView() {
     }
   }
 
-  const sendMessage = async (text: string) => {
-    if (!text.trim() || streaming || !threadId) return
+  const sendMessage = async (text: string, displayText?: string, explicitThreadId?: string) => {
+    const tid = explicitThreadId ?? threadId
+    if (!text.trim() || streaming || !tid) return
     setError(null)
-    setMessages(prev => [...prev, { role: 'user', content: text }])
+    setMessages(prev => [...prev, { role: 'user', content: displayText ?? text }])
     setStreaming(true)
     setStreamingText('')
     let full = ''
     try {
-      for await (const event of sendChatMessage(text, threadId) as AsyncGenerator<ChatEvent>) {
+      for await (const event of sendChatMessage(text, tid) as AsyncGenerator<ChatEvent>) {
         if (event.type === 'chunk' && event.text) {
           full += event.text
           setStreamingText(full)
@@ -230,12 +273,161 @@ export default function ChatView() {
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!input.trim() || streaming || !threadId) return
-    const text = obsidianOnly
-      ? input.trim() + '\n\nSearch only in the Obsidian vault.'
-      : input.trim()
+    if (!input.trim() || !threadId) return
+
+    if (intakeMode === 'dumping') {
+      // Accumulate locally — do not send to Elvis
+      setMessages(prev => [...prev, { role: 'user', content: input.trim() }])
+      setDumpMessages(prev => [...prev, input.trim()])
+      setInput('')
+      return
+    }
+
+    if (streaming) return
+    const raw = input.trim()
     setInput('')
+
+    if (intakeContext) {
+      const ctx =
+        `[Project intake clarification for "${intakeContext.projectName}". ` +
+        `Requirements.md has been written. Concerns raised: ${intakeContext.concerns.join('; ')}]\n\n`
+      setIntakeContext(null)
+      await sendMessage(ctx + raw, raw)
+      return
+    }
+
+    const text = obsidianOnly ? raw + '\n\nSearch only in the Obsidian vault.' : raw
     await sendMessage(text)
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSend(e as unknown as React.FormEvent)
+    }
+  }
+
+  // --- New Project flow ---
+
+  const handleNewProject = async () => {
+    if (streaming) return
+    // Ensure we have a thread
+    if (!threadId) {
+      try {
+        const t = await createChatThread()
+        setThreads(prev => [t, ...prev])
+        setThreadId(t.thread_id)
+      } catch (e) {
+        setError(String(e))
+        return
+      }
+    }
+    setProjectName('')
+    setDumpMessages([])
+    setIntakeMode('naming')
+  }
+
+  const handleNameConfirm = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!projectName.trim()) return
+    setIntakeMode('dumping')
+    setMessages([WELCOME, {
+      role: 'assistant',
+      content: `Starting project **${projectName.trim()}**. Dump your ideas — anything goes. Click **Done** when finished.`,
+    }])
+    setTimeout(() => inputRef.current?.focus(), 50)
+  }
+
+  const handleDone = async () => {
+    if (intakeLoading || dumpMessages.length === 0) return
+    setIntakeLoading(true)
+    setIntakeMode('idle')
+    setStreaming(true)
+    setStreamingText('')
+    try {
+      const result = await finishIntake(projectName.trim(), dumpMessages)
+      const concernText = result.concerns.length > 0
+        ? `I need clarification on:\n${result.concerns.map(c => `- ${c}`).join('\n')}`
+        : `Requirements written to \`${result.note_path}\`. Let me know if you need any changes.`
+      setMessages(prev => [...prev, { role: 'assistant', content: concernText }])
+      setActiveProject(projectName.trim())
+      if (result.concerns.length > 0) {
+        setIntakeContext({ projectName: projectName.trim(), concerns: result.concerns })
+      }
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setIntakeLoading(false)
+      setStreaming(false)
+      setDumpMessages([])
+      setTimeout(() => inputRef.current?.focus(), 50)
+    }
+  }
+
+  // --- Continue Project flow ---
+
+  const handleContinueProject = async () => {
+    if (streaming) return
+    try {
+      const ps = await listProjects()
+      setProjects(ps)
+      setProjectPickerOpen(true)
+    } catch (e) {
+      setError(String(e))
+    }
+  }
+
+  const handleProjectSelect = async (name: string) => {
+    setProjectPickerOpen(false)
+    try {
+      const [detail, t] = await Promise.all([getProject(name), createChatThread(name)])
+      setThreads(prev => [t, ...prev])
+      setIntakeContext(null)
+      setActiveProject(name)
+      setMessages([WELCOME])
+      setThreadId(t.thread_id)
+
+      const fileList = detail.paths.map(p => `- ${p}`).join('\n')
+      const contextMsg =
+        `[Project context — continuing project "${name}"]\n\nFiles in vault:\n${fileList}\n\n` +
+        `Briefly acknowledge the project and ask what Pun wants to work on.`
+      await sendMessage(contextMsg, `Continue project: **${name}**`, t.thread_id)
+    } catch (e) {
+      setError(String(e))
+    }
+  }
+
+  const handleRunBuildPlan = async () => {
+    if (!activeProject || buildPlanRunning) return
+    setBuildPlanRunning(true)
+    let log = ''
+    setMessages(prev => [...prev, { role: 'assistant', content: `Running build plan for **${activeProject}**…` }])
+    try {
+      for await (const event of runBuildPlan(activeProject) as AsyncGenerator<BuildPlanEvent>) {
+        if (event.type === 'log') {
+          log += event.message + '\n'
+          setMessages(prev => {
+            const next = [...prev]
+            next[next.length - 1] = { role: 'assistant', content: `Running build plan for **${activeProject}**…\n\`\`\`\n${log}\`\`\`` }
+            return next
+          })
+        } else if (event.type === 'done') {
+          setMessages(prev => {
+            const next = [...prev]
+            next[next.length - 1] = { role: 'assistant', content: `Build plan written to \`${event.note_path}\`` }
+            return next
+          })
+        } else if (event.type === 'error') {
+          setError(event.message)
+          setMessages(prev => prev.slice(0, -1))
+        }
+      }
+    } catch (e) {
+      setError(String(e))
+      setMessages(prev => prev.slice(0, -1))
+    } finally {
+      setBuildPlanRunning(false)
+    }
   }
 
   const handleBriefing = () => sendMessage(
@@ -245,12 +437,7 @@ export default function ChatView() {
     'Do not add any closing question or offer to help.'
   )
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSend(e as unknown as React.FormEvent)
-    }
-  }
+  const isDumping = intakeMode === 'dumping'
 
   return (
     <div className="flex flex-row" style={{ height: 'calc(100vh - 9rem)' }}>
@@ -291,26 +478,112 @@ export default function ChatView() {
           <div ref={bottomRef} />
         </div>
 
-        {/* Quick actions */}
-        <div className="flex gap-2 pb-3 shrink-0">
-          <button
-            onClick={handleBriefing}
-            disabled={streaming || !threadId}
-            className="px-3 py-1 text-[11px] rounded-full border border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-          >
-            Daily Briefing
-          </button>
-          <button
-            onClick={() => setObsidianOnly(v => !v)}
-            disabled={!threadId}
-            className={`px-3 py-1 text-[11px] rounded-full border transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
-              obsidianOnly
-                ? 'border-violet-600 bg-violet-900/40 text-violet-300'
-                : 'border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500'
-            }`}
-          >
-            Obsidian Only
-          </button>
+        {/* Quick actions / intake controls */}
+        <div className="flex gap-2 pb-3 shrink-0 flex-wrap items-center relative">
+          {intakeMode === 'naming' ? (
+            /* Inline name input */
+            <form onSubmit={handleNameConfirm} className="flex gap-2 items-center w-full">
+              <input
+                ref={nameInputRef}
+                value={projectName}
+                onChange={e => setProjectName(e.target.value)}
+                placeholder="Project name…"
+                className="flex-1 bg-gray-900 border border-gray-700 rounded-md px-3 py-1.5 text-xs text-gray-100 placeholder-gray-600 focus:outline-none focus:border-gray-500"
+              />
+              <button
+                type="submit"
+                disabled={!projectName.trim()}
+                className="px-3 py-1.5 text-[11px] rounded-md bg-gray-800 hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                Start Dump
+              </button>
+              <button
+                type="button"
+                onClick={() => setIntakeMode('idle')}
+                className="px-3 py-1.5 text-[11px] rounded-md text-gray-500 hover:text-gray-300 transition-colors"
+              >
+                Cancel
+              </button>
+            </form>
+          ) : isDumping ? (
+            /* Dump mode: Done button */
+            <>
+              <span className="text-[11px] text-violet-400">
+                Dumping into <strong>{projectName}</strong> — {dumpMessages.length} message{dumpMessages.length !== 1 ? 's' : ''}
+              </span>
+              <button
+                onClick={handleDone}
+                disabled={intakeLoading || dumpMessages.length === 0}
+                className="px-3 py-1 text-[11px] rounded-full border border-violet-600 bg-violet-900/40 text-violet-300 hover:bg-violet-800/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors ml-auto"
+              >
+                {intakeLoading ? 'Analysing…' : 'Done'}
+              </button>
+            </>
+          ) : (
+            /* Normal mode */
+            <>
+              <button
+                onClick={handleBriefing}
+                disabled={streaming || !threadId}
+                className="px-3 py-1 text-[11px] rounded-full border border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                Daily Briefing
+              </button>
+              <button
+                onClick={() => setObsidianOnly(v => !v)}
+                disabled={!threadId}
+                className={`px-3 py-1 text-[11px] rounded-full border transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
+                  obsidianOnly
+                    ? 'border-violet-600 bg-violet-900/40 text-violet-300'
+                    : 'border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500'
+                }`}
+              >
+                Obsidian Only
+              </button>
+              <button
+                onClick={handleNewProject}
+                disabled={streaming}
+                className="px-3 py-1 text-[11px] rounded-full border border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                New Project
+              </button>
+              <div className="relative" ref={pickerRef}>
+                <button
+                  onClick={handleContinueProject}
+                  disabled={streaming}
+                  className="px-3 py-1 text-[11px] rounded-full border border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  Continue Project
+                </button>
+                {projectPickerOpen && (
+                  <div className="absolute bottom-full mb-1 left-0 bg-gray-900 border border-gray-700 rounded-md shadow-lg z-10 min-w-[180px]">
+                    {projects.length === 0 ? (
+                      <p className="text-[11px] text-gray-500 px-3 py-2">No projects found</p>
+                    ) : (
+                      projects.map(p => (
+                        <button
+                          key={p.name}
+                          onClick={() => handleProjectSelect(p.name)}
+                          className="w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-gray-800 transition-colors first:rounded-t-md last:rounded-b-md"
+                        >
+                          {p.name}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+              {activeProject && (
+                <button
+                  onClick={handleRunBuildPlan}
+                  disabled={buildPlanRunning}
+                  className="px-3 py-1 text-[11px] rounded-full border border-emerald-700 text-emerald-400 hover:bg-emerald-900/40 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  {buildPlanRunning ? 'Running…' : `Run Build Plan`}
+                </button>
+              )}
+            </>
+          )}
         </div>
 
         {/* Input */}
@@ -321,8 +594,14 @@ export default function ChatView() {
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={threadId ? 'Message Elvis… (Enter to send, Shift+Enter for newline)' : 'Create a new chat to start'}
-              disabled={streaming || !threadId}
+              placeholder={
+                isDumping
+                  ? 'Dump your ideas… (click Done when finished)'
+                  : threadId
+                  ? 'Message Elvis… (Enter to send, Shift+Enter for newline)'
+                  : 'Create a new chat to start'
+              }
+              disabled={(streaming && !isDumping) || !threadId}
               rows={1}
               className="flex-1 bg-gray-900 border border-gray-700 rounded-md px-4 py-2.5 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-gray-500 disabled:opacity-50 resize-none leading-relaxed"
               style={{ minHeight: '42px', maxHeight: '160px', overflowY: 'auto' }}
@@ -334,10 +613,10 @@ export default function ChatView() {
             />
             <button
               type="submit"
-              disabled={!input.trim() || streaming || !threadId}
+              disabled={!input.trim() || (streaming && !isDumping) || !threadId}
               className="px-4 py-2.5 text-xs bg-gray-800 hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed rounded-md transition-colors shrink-0"
             >
-              Send
+              {isDumping ? 'Add' : 'Send'}
             </button>
           </div>
           <p className="text-[11px] text-gray-700 mt-1.5">Enter to send · Shift+Enter for newline</p>

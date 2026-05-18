@@ -24,7 +24,20 @@ from langgraph.prebuilt import ToolNode, tools_condition
 
 from core.config import DB_PATH, OLLAMA_MODEL, OLLAMA_BASE_URL, CHATBOT_NAME, MAX_CONTEXT_TOKENS, MAX_RELEVANT_MEMORIES
 from agent.tools import ELVIS_TOOLS
+from agent.tools import (
+    web_search, fetch_url,
+    search_obsidian, read_obsidian_note, update_obsidian_note, search_documents,
+    list_documents, read_document, write_document, delete_document, move_document,
+    update_requirements,
+)
 from memory.elvis_memory import recall, remember as mem_remember
+
+_PROJECT_TOOLS = [
+    web_search, fetch_url,
+    search_obsidian, read_obsidian_note, update_obsidian_note, search_documents,
+    list_documents, read_document, write_document, delete_document, move_document,
+    update_requirements,
+]
 
 
 # ---------------------------------------------------------------------------
@@ -153,9 +166,187 @@ def get_server_workflow():
     return _server_workflow
 
 
+def _compile_project_workflow(llm, checkpointer):
+    """Compile a restricted workflow for project threads (no calendar/news/Gmail/CAD)."""
+    def chatbot_node(state: MessagesState, config: RunnableConfig) -> dict:
+        thread_id = config.get("configurable", {}).get("thread_id", "")
+        latest_human = next(
+            (_extract_text(m.content) for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
+            "",
+        )
+        mems = recall(latest_human[:500], limit=MAX_RELEVANT_MEMORIES)
+        project_name, vault_files, requirements = _read_project_vault_context(thread_id)
+        system_prompt = _build_project_system_prompt(mems, project_name, vault_files, requirements)
+        trimmed = trim_messages(
+            state["messages"],
+            max_tokens=MAX_CONTEXT_TOKENS,
+            token_counter=len,
+            strategy="last",
+            include_system=False,
+        )
+        return {"messages": [llm.invoke([SystemMessage(content=system_prompt)] + trimmed)]}
+
+    def memory_write_node(state: MessagesState, config: RunnableConfig = None) -> dict:
+        from langchain_core.messages import AIMessage
+        thread_id = (config or {}).get("configurable", {}).get("thread_id", "")
+        if thread_id.startswith("run-"):
+            return {}
+        messages = state.get("messages", [])
+        last_human = next((m for m in reversed(messages) if isinstance(m, HumanMessage)), None)
+        last_ai = next(
+            (m for m in reversed(messages) if isinstance(m, AIMessage) and _extract_text(m.content)),
+            None,
+        )
+        if last_human and last_ai:
+            pair = [
+                {"role": "user", "content": _extract_text(last_human.content)},
+                {"role": "assistant", "content": _extract_text(last_ai.content)},
+            ]
+            def _write(p=pair):
+                try:
+                    mem_remember(p)
+                except Exception as e:
+                    print(f"\n[memory_write] Failed: {e}")
+            _mem_executor.submit(_write)
+        return {}
+
+    tool_node = ToolNode(_PROJECT_TOOLS)
+    builder = StateGraph(MessagesState)
+    builder.add_node("chatbot", chatbot_node)
+    builder.add_node("tools", tool_node)
+    builder.add_node("memory_write", memory_write_node)
+    builder.set_entry_point("chatbot")
+    builder.add_conditional_edges("chatbot", tools_condition, {"tools": "tools", END: "memory_write"})
+    builder.add_edge("tools", "chatbot")
+    builder.add_edge("memory_write", END)
+    return builder.compile(checkpointer=checkpointer)
+
+
+_project_workflow = None
+_project_wf_lock = _threading.Lock()
+
+
+def get_project_workflow():
+    """Thread-safe singleton for project-context threads."""
+    global _project_workflow
+    with _project_wf_lock:
+        if _project_workflow is None:
+            conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+            checkpointer = SqliteSaver(conn)
+            project_llm = ChatOllama(
+                model=OLLAMA_MODEL,
+                base_url=OLLAMA_BASE_URL,
+                temperature=0.5,
+                streaming=True,
+                reasoning=False,
+                num_ctx=16384,
+            ).bind_tools(_PROJECT_TOOLS)
+            _project_workflow = _compile_project_workflow(project_llm, checkpointer)
+    return _project_workflow
+
+
+# ---------------------------------------------------------------------------
+# Project vault context — read fresh on every message
+# ---------------------------------------------------------------------------
+
+def _project_folder_from_thread(thread_id: str) -> "Path | None":
+    """Return the vault folder Path for a project thread, or None if not found.
+    thread_id format: project:{slug}-{uuid8}
+    """
+    from pathlib import Path
+    import re
+    from services.obsidian import VAULT_ROOT
+
+    prefix = thread_id.removeprefix("project:")
+    # uuid8 is always 8 hex chars at the end: strip it
+    slug = re.sub(r"-[0-9a-f]{8}$", "", prefix)
+
+    vault = Path(VAULT_ROOT)
+    for d in vault.iterdir():
+        if not d.is_dir() or d.name.startswith("."):
+            continue
+        req = d / "Requirements.md"
+        if not req.exists():
+            continue
+        try:
+            if "elvis: project-intake" not in req.read_text(encoding="utf-8"):
+                continue
+        except OSError:
+            continue
+        folder_slug = re.sub(r"[^a-z0-9]+", "-", d.name.lower()).strip("-")
+        if folder_slug == slug:
+            return d
+    return None
+
+
+def _read_project_vault_context(thread_id: str) -> tuple[str, list[str], str]:
+    """Return (project_name, file_list, requirements_text) for the project folder, read live from disk."""
+    from pathlib import Path
+
+    folder = _project_folder_from_thread(thread_id)
+    if folder is None:
+        return "", [], ""
+
+    project_name = folder.name
+    files = sorted(p.relative_to(folder.parent).as_posix() for p in folder.rglob("*.md"))
+
+    req_path = folder / "Requirements.md"
+    requirements = ""
+    if req_path.exists():
+        try:
+            requirements = req_path.read_text(encoding="utf-8")
+        except OSError:
+            pass
+
+    return project_name, files, requirements
+
+
 # ---------------------------------------------------------------------------
 # System prompt
 # ---------------------------------------------------------------------------
+
+def _build_project_system_prompt(
+    mems: list = None,
+    project_name: str = "",
+    vault_files: list = None,
+    requirements: str = "",
+) -> str:
+    from datetime import datetime
+    today = datetime.now().strftime("%A, %d %B %Y")
+
+    project_line = f" You are working on: **{project_name}**." if project_name else ""
+
+    base = f"""You are {CHATBOT_NAME}, a technical assistant helping Pun build a project.{project_line}
+Today's date is {today}.
+
+CRITICAL: Respond in English only.
+
+Rules:
+- Answer directly. Lead with the conclusion or number, then explain if needed.
+- "The project folder" and "the vault" refer to the {f'`{project_name}/`' if project_name else 'project'} folder — its current contents are listed below.
+- The vault context injected below is live as of this message. Check it before calling any vault tools.
+- Only call read_obsidian_note for a file already listed below when you need its full content. Only call search_obsidian when searching for something NOT in the file list.
+- If a question involves measurements, specs, or constraints, check Requirements.md below first.
+- State facts you are certain about. If the math is wrong or something is physically impossible, say so plainly.
+- Keep responses conversational — no `##` headers, no step-by-step sections, no LaTeX. Use plain prose or a short bullet list only when listing multiple items.
+- Bold only the final answer or a critical number, not decorative terms.
+- NEVER end with an offer to help or a follow-up question.
+- To save conclusions, decisions, plans, timelines, or guides: use update_obsidian_note with path `{project_name}/Filename.md`. Use write_document ONLY for non-Markdown files (CSVs, raw data).
+"""
+
+    if vault_files:
+        file_list = "\n".join(f"  - {f}" for f in vault_files)
+        base += f"\n## {project_name or 'Project'} vault files (current):\n{file_list}\n"
+
+    if requirements:
+        base += f"\n## Requirements.md:\n{requirements}\n"
+
+    if mems:
+        facts = "\n".join(f"  - {m['memory']}" for m in mems)
+        base += f"\n## What I know:\n{facts}\n"
+
+    return base
+
 
 def _build_system_prompt(mems: list = None, voice: bool = False) -> str:
     from datetime import datetime
@@ -172,7 +363,7 @@ Rules:
 - IMMEDIATELY call get_current_time when asked about the time or date — do NOT say you will check, just call the tool.
 - IMMEDIATELY call get_news when asked about news or headlines — do NOT say you will check, just call the tool.
 - IMMEDIATELY call get_calendar when asked about schedules, events, or appointments — do NOT say you will check, just call the tool.
-- IMMEDIATELY call web_search for anything requiring current information. When search snippets lack detail, follow up with fetch_url on the most relevant URL.
+- IMMEDIATELY call web_search for anything requiring current information. Also call web_search before making specific factual claims about: scientific names, species identification, plant care, medical facts, nutritional data, technical specifications, or any domain where a hallucinated detail would be wrong. When search snippets lack detail, follow up with fetch_url on the most relevant URL.
 - Call remember when the user explicitly asks you to remember something.
 - Call search_gmail for any email question — pass "recent emails" if no specific topic is given.
 - Call search_documents for ANY personal file (CV, resume, transcript, photos, receipts, tax docs) — never guess, always call the tool first.

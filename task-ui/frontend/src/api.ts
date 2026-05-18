@@ -1,4 +1,4 @@
-import type { Run, RunSummary, CadStatusEvent, CadOutput, ChatThread, ChatMessage, ChatEvent, WeeklySummary, BrainSurfacedRow, BrainStats, BrainTrendPoint, BrainNote, BrainEngagementRunResult, BrainSurfaceEvent, SurfacedNote, NotesChatEvent } from './types'
+import type { Run, RunSummary, CadStatusEvent, CadOutput, ChatThread, ChatMessage, ChatEvent, WeeklySummary, BrainSurfacedRow, BrainStats, BrainTrendPoint, BrainNote, BrainEngagementRunResult, BrainSurfaceEvent, SurfacedNote, NotesChatEvent, IntakeProject, IntakeFinishResponse, IntakeProjectDetail, BuildPlanEvent } from './types'
 
 const BASE = '/api'
 
@@ -106,8 +106,12 @@ export async function fetchChatThreads(): Promise<ChatThread[]> {
   return res.json()
 }
 
-export async function createChatThread(): Promise<ChatThread> {
-  const res = await fetch(`${BASE}/chat/threads`, { method: 'POST' })
+export async function createChatThread(projectName?: string): Promise<ChatThread> {
+  const res = await fetch(`${BASE}/chat/threads`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(projectName ? { project_name: projectName } : {}),
+  })
   if (!res.ok) throw new Error(await res.text())
   return res.json()
 }
@@ -205,4 +209,36 @@ export async function* sendNotesChatMessage(
   })
   if (!res.ok) throw new Error(await res.text())
   yield* _sseStream<NotesChatEvent>(res)
+}
+
+export async function listProjects(): Promise<IntakeProject[]> {
+  const res = await fetch(`${BASE}/intake/projects`)
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function getProject(name: string): Promise<IntakeProjectDetail> {
+  const res = await fetch(`${BASE}/intake/project/${encodeURIComponent(name)}`)
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function* runBuildPlan(projectName: string): AsyncGenerator<BuildPlanEvent> {
+  const res = await fetch(`${BASE}/intake/run-build-plan`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project_name: projectName }),
+  })
+  if (!res.ok) throw new Error(await res.text())
+  yield* _sseStream<BuildPlanEvent>(res)
+}
+
+export async function finishIntake(projectName: string, messages: string[]): Promise<IntakeFinishResponse> {
+  const res = await fetch(`${BASE}/intake/finish`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project_name: projectName, messages }),
+  })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
 }
