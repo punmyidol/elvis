@@ -359,3 +359,129 @@ Benefits:
 - Multiple simultaneous intake sessions
 - Editing Requirements.md via UI after it's written (Obsidian handles that)
 - Deleting projects via UI
+
+---
+
+# Calendar Agent — Align Timeline to Schedule
+
+Once a project's `Timeline.md` is written in project chat, the calendar agent reads it, fetches real iCloud calendar events, and maps each timeline week to concrete dates around existing commitments.
+
+---
+
+## Design
+
+Single LLM call — not the task runner. This is a synthesis job (read 2 things → produce 1 note), not a multi-step research workflow. Calendar data is pre-fetched in Python so no calendar tools need to be added to `_PROJECT_TOOLS`.
+
+---
+
+## Full flow
+
+1. Pun writes a timeline in project chat — Elvis calls `update_obsidian_note` → `{project_name}/Timeline.md` exists in vault
+2. Pun clicks **Align to Calendar** button in the project UI
+3. Server reads `Timeline.md` from vault
+4. Server fetches iCloud calendar events for the next 8 weeks via `get_events_for_range`
+5. Single LLM call produces `Aligned Timeline.md` with a week-by-week table (concrete dates + conflicts)
+6. Note is written to `{project_name}/Aligned Timeline.md` in vault
+7. UI streams progress and shows the note path on completion
+
+---
+
+## Files to change
+
+| File | Change |
+|---|---|
+| `task-ui/server.py` | New `_run_calendar_alignment(project_name, q)` worker + `AlignTimelineRequest` model + `POST /api/intake/align-timeline` SSE endpoint |
+| `task-ui/frontend/src/api.ts` | New `runAlignTimeline(projectName)` async generator — mirrors `runBuildPlan` |
+| `task-ui/frontend/src/components/ChatView.tsx` | New `alignRunning` state + `handleAlignTimeline` handler + "Align to Calendar" button next to "Run Build Plan" |
+
+---
+
+## Backend — `_run_calendar_alignment`
+
+```python
+def _run_calendar_alignment(project_name: str, q: queue.Queue) -> None:
+    try:
+        from services.obsidian import VAULT_ROOT, update_obsidian_note_logic
+        from services.elvis_calendar import get_events_for_range, format_events_for_llm
+        from core.config import SECOND_BRAIN_MODEL, OLLAMA_BASE_URL
+        from datetime import datetime, timedelta
+
+        # 1. Read Timeline.md
+        timeline_path = Path(VAULT_ROOT) / project_name / "Timeline.md"
+        if not timeline_path.exists():
+            q.put({"type": "error", "message": f"Timeline.md not found in {project_name}/"})
+            return
+
+        timeline_content = timeline_path.read_text(encoding="utf-8")
+        q.put({"type": "log", "message": "Timeline loaded — fetching calendar…"})
+
+        # 2. Fetch 8 weeks of calendar events
+        start = datetime.now()
+        end = start + timedelta(weeks=8)
+        events = get_events_for_range(start, end)
+        calendar_text = format_events_for_llm(events) or "(no events in the next 8 weeks)"
+        q.put({"type": "log", "message": f"{len(events)} calendar events fetched — aligning…"})
+
+        # 3. Single LLM call
+        llm = ChatOllama(model=SECOND_BRAIN_MODEL, base_url=OLLAMA_BASE_URL, temperature=0.2)
+        system = (
+            "You are Elvis, Pun's assistant. Align a project timeline to Pun's actual calendar. "
+            "Output a Markdown note only — no commentary before or after."
+        )
+        prompt = (
+            f"Project: {project_name}\n\n"
+            f"Project timeline:\n{timeline_content}\n\n"
+            f"Pun's calendar for the next 8 weeks:\n{calendar_text}\n\n"
+            "Map each Week N to concrete Monday–Sunday date ranges starting from today. "
+            "Identify any week that overlaps with existing calendar events and flag it as a conflict. "
+            "Output format:\n"
+            f"# Aligned Timeline — {project_name}\n\n"
+            "| Week | Start | End | Focus | Conflicts |\n"
+            "|---|---|---|---|---|\n"
+            "| Week 1 | YYYY-MM-DD | YYYY-MM-DD | ... | none / describe conflict |\n\n"
+            "## Schedule Risks\n"
+            "- bullet per hard conflict or tight week\n\n"
+            "If no conflicts exist, write '(none)' in the Schedule Risks section."
+        )
+        result = llm.invoke([SystemMessage(content=system), HumanMessage(content=prompt)])
+        body = result.content.strip()
+
+        # 4. Write note to vault
+        note_ref = f"{project_name}/Aligned Timeline.md"
+        update_obsidian_note_logic(note_ref, body)
+        q.put({"type": "done", "note_path": note_ref})
+
+    except Exception as exc:
+        q.put({"type": "error", "message": str(exc)})
+    finally:
+        q.put(None)
+```
+
+## Endpoint
+
+```
+POST /api/intake/align-timeline
+```
+
+Same SSE streaming pattern as `/api/intake/run-build-plan` — daemon thread, `queue.Queue`, async generator yielding `data: {...}\n\n` frames.
+
+---
+
+## Reused utilities
+
+| Utility | Path |
+|---|---|
+| `get_events_for_range`, `format_events_for_llm` | `chatbot/services/elvis_calendar.py` |
+| `update_obsidian_note_logic` | `chatbot/services/obsidian.py` |
+| `VAULT_ROOT`, `SECOND_BRAIN_MODEL`, `OLLAMA_BASE_URL` | `chatbot/services/obsidian.py`, `chatbot/core/config.py` |
+| SSE streaming pattern | `task-ui/server.py` lines ~924–988 |
+
+---
+
+## Verification
+
+1. In the Helmet Detection System project thread, confirm `Timeline.md` exists in vault
+2. Click **Align to Calendar** → SSE log lines appear in chat
+3. On completion, open `Helmet Detection System/Aligned Timeline.md` in vault — paste output here
+4. Confirm table has concrete dates and Schedule Risks section
+5. Test error path: click on a project with no `Timeline.md` → confirm error message in chat

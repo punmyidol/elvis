@@ -1,0 +1,27 @@
+{
+  "calendar_next_48h": [],
+  "raw_by_source": {
+    "git": [
+      {
+        "timestamp": "2026-05-18T16:00:00",
+        "title": "wip: helmet_detector.py — add bounding box logic",
+        "content": "Added cv2 bounding boxes around detected helmets. Still getting false positives on white hard hats.",
+        "author": "punmyidol",
+        "meta": "",
+        "source_ref": "git/bbb222"
+      }
+    ],
+    "obsidian": [
+      {
+        "timestamp": "2026-05-17T21:00:00",
+        "title": "Helmet detection project — components",
+        "content": "Have: Raspberry Pi 4, 5V power supply. Still need: ESP32-CAM module (~350 THB on Lazada). Camera angle: mount at gate, 2m height.",
+        "author": "pun",
+        "meta": "",
+        "source_ref": "obsidian/projects/helmet-detection/components.md"
+      }
+    ]
+  },
+  "weeklies": [],
+  "recent_surfacings": []
+}

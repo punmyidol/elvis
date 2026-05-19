@@ -1,0 +1,35 @@
+{
+  "calendar_next_48h": [],
+  "raw_by_source": {
+    "git": [
+      {
+        "timestamp": "2026-05-18T10:00:00",
+        "title": "fix: update .gitignore to exclude node_modules",
+        "content": "Removed accidentally committed node_modules directory from repo root.",
+        "author": "punmyidol",
+        "meta": "",
+        "source_ref": "git/abc123"
+      },
+      {
+        "timestamp": "2026-05-17T09:00:00",
+        "title": "chore: bump requirements.txt versions",
+        "content": "Updated langchain to 0.3.1, fastapi to 0.115.0, langchain-ollama to 0.2.3.",
+        "author": "punmyidol",
+        "meta": "",
+        "source_ref": "git/def456"
+      }
+    ],
+    "obsidian": [
+      {
+        "timestamp": "2026-05-16T20:00:00",
+        "title": "Daily note 2026-05-16",
+        "content": "Watered the plants. Made pad thai for dinner. Need to call Mom this weekend.",
+        "author": "pun",
+        "meta": "",
+        "source_ref": "obsidian/dailies/2026-05-16.md"
+      }
+    ]
+  },
+  "weeklies": [],
+  "recent_surfacings": []
+}

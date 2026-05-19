@@ -913,6 +913,10 @@ class RunBuildPlanRequest(BaseModel):
     project_name: str
 
 
+class AlignTimelineRequest(BaseModel):
+    project_name: str
+
+
 @app.post("/api/intake/run-build-plan")
 async def intake_run_build_plan(body: RunBuildPlanRequest):
     import contextlib, io as _io
@@ -979,6 +983,116 @@ async def intake_run_build_plan(body: RunBuildPlanRequest):
             q.put(None)
 
     threading.Thread(target=worker, daemon=True).start()
+
+    async def stream():
+        loop = asyncio.get_event_loop()
+        while True:
+            event = await loop.run_in_executor(None, q.get)
+            if event is None:
+                break
+            yield f"data: {json.dumps(event)}\n\n"
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+def _run_calendar_alignment(project_name: str, q: queue.Queue) -> None:
+    try:
+        from services.obsidian import VAULT_ROOT, update_obsidian_note_logic
+        from services.elvis_calendar import get_events_for_range, format_events_for_llm
+        from core.config import SECOND_BRAIN_MODEL, OLLAMA_BASE_URL
+        from langchain_ollama import ChatOllama
+        from langchain_core.messages import HumanMessage as _HM, SystemMessage as _SM
+        from datetime import datetime, timedelta
+
+        timeline_path = Path(VAULT_ROOT) / project_name / "Timeline.md"
+        if not timeline_path.exists():
+            q.put({"type": "error", "message": f"Timeline.md not found in {project_name}/"})
+            return
+
+        timeline_content = timeline_path.read_text(encoding="utf-8")
+        q.put({"type": "log", "message": "Timeline loaded — fetching calendar…"})
+
+        start = datetime.now()
+        end = start + timedelta(weeks=8)
+        events = get_events_for_range(start, end)
+        calendar_text = format_events_for_llm(events) or "(no events in the next 8 weeks)"
+        q.put({"type": "log", "message": f"{len(events)} calendar events fetched — aligning…"})
+
+        from datetime import date as _date
+        today_str = _date.today().isoformat()
+        today_dt = datetime.now()
+        week1_start = (today_dt - timedelta(days=today_dt.weekday())).date()
+        week1_end = week1_start + timedelta(days=6)
+
+        llm = ChatOllama(model=SECOND_BRAIN_MODEL, base_url=OLLAMA_BASE_URL, temperature=0.2)
+        system = (
+            "You are Elvis, Pun's assistant. Your job is to map a project timeline onto Pun's "
+            "real calendar and flag every scheduling conflict clearly so Pun knows which weeks "
+            "are unavailable and what needs to move. Output a Markdown note only — no prose "
+            "before or after the note."
+        )
+        prompt = (
+            f"Project: {project_name}\n"
+            f"Today: {today_str} (Week 1 = Monday {week1_start} to Sunday {week1_end})\n\n"
+            f"Project timeline:\n{timeline_content}\n\n"
+            f"Pun's calendar for the next 8 weeks:\n{calendar_text}\n\n"
+            f"Rules:\n"
+            f"1. Week 1 = {week1_start} to {week1_end}. Each subsequent week is exactly 7 days "
+            f"later. Do NOT shift the dates — conflicted weeks keep their assigned dates.\n"
+            "2. Status: OK = no conflicts. BUSY = partial conflicts (short events, Pun can still "
+            "work). BLOCKED = exams, travel, or anything that kills the whole week.\n"
+            "3. Conflicts column: write a SHORT label only — e.g. '3 exams', 'travel to Pattaya', "
+            "'birthday'. No dates, no times. Keep it under 6 words. If none, write 'none'.\n"
+            "4. Recommended Action: write the ACTUAL action with REAL week numbers and REAL "
+            "event names. Do NOT write placeholders like '[event]' or 'Week N' — fill them in.\n"
+            "   - OK: 'Proceed as planned'\n"
+            "   - BUSY: 'Work around <actual event name>'\n"
+            "   - BLOCKED: 'Skip — <actual reason>. Push to Week <actual number>.'\n"
+            "5. Full event details (dates, times, names) go ONLY in the Schedule Risks section, "
+            "not in the table.\n\n"
+            "Output format exactly:\n"
+            f"# Aligned Timeline — {project_name}\n\n"
+            "| Week | Start | End | Focus | Status | Conflicts | Action |\n"
+            "|---|---|---|---|---|---|---|\n"
+            "| Week 1 | YYYY-MM-DD | YYYY-MM-DD | ... | OK | none | Proceed as planned |\n\n"
+            "### Task Breakdown\n"
+            "For each week, list every sub-task from the original timeline mapped to a concrete "
+            "date range. Use the week's Start date as Day 1. Format:\n"
+            "**Week N (YYYY-MM-DD – YYYY-MM-DD)**\n"
+            "- YYYY-MM-DD to YYYY-MM-DD: <sub-task>\n"
+            "If the week is BLOCKED, prefix each task with ⚠️ and note it is pushed.\n"
+            "Skip tasks that have no sub-tasks in the original timeline.\n\n"
+            "## Schedule Risks\n"
+            "One bullet per BLOCKED or BUSY week. Include the actual event names, dates, and "
+            "which week absorbs the displaced work.\n\n"
+            "## Revised Completion Estimate\n"
+            "State the earliest week and concrete end date Pun can finish, accounting for all blocks."
+        )
+        result = llm.invoke([_SM(content=system), _HM(content=prompt)])
+        body = result.content.strip()
+
+        note_ref = f"{project_name}/Aligned Timeline.md"
+        update_obsidian_note_logic(note_ref, body)
+        q.put({"type": "done", "note_path": note_ref})
+
+    except Exception as exc:
+        q.put({"type": "error", "message": str(exc)})
+    finally:
+        q.put(None)
+
+
+@app.post("/api/intake/align-timeline")
+async def intake_align_timeline(body: AlignTimelineRequest):
+    project_name = body.project_name.strip()
+    if not project_name:
+        raise HTTPException(status_code=400, detail="project_name required")
+
+    q: queue.Queue[dict | None] = queue.Queue()
+    threading.Thread(target=_run_calendar_alignment, args=(project_name, q), daemon=True).start()
 
     async def stream():
         loop = asyncio.get_event_loop()

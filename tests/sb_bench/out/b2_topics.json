@@ -1,0 +1,18 @@
+[
+  {
+    "topic": "UI update for task-ui button color",
+    "reason": "Git commit indicates a design system alignment in the UI.",
+    "history_query": "task-ui button color change",
+    "source_signals": [
+      "git"
+    ]
+  },
+  {
+    "topic": "New recipe: Tom Kha Gai",
+    "reason": "Obsidian entry suggests culinary exploration or documentation of Thai cuisine.",
+    "history_query": "thai recipes",
+    "source_signals": [
+      "obsidian"
+    ]
+  }
+]

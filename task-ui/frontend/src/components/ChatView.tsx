@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { createChatThread, deleteChatThread, fetchChatHistory, fetchChatThreads, sendChatMessage, listProjects, getProject, finishIntake, runBuildPlan } from '../api'
+import { createChatThread, deleteChatThread, fetchChatHistory, fetchChatThreads, sendChatMessage, listProjects, getProject, finishIntake, runBuildPlan, runAlignTimeline } from '../api'
 import { ChatMarkdownContent } from './FileViewer'
 import type { BuildPlanEvent, ChatEvent, ChatMessage, ChatThread, IntakeProject } from '../types'
 
@@ -144,6 +144,7 @@ export default function ChatView() {
   // Active project (set after new project intake or continuing a project)
   const [activeProject, setActiveProject] = useState<string | null>(null)
   const [buildPlanRunning, setBuildPlanRunning] = useState(false)
+  const [alignRunning, setAlignRunning] = useState(false)
 
   const loadThreads = async () => {
     try {
@@ -430,6 +431,39 @@ export default function ChatView() {
     }
   }
 
+  const handleAlignTimeline = async () => {
+    if (!activeProject || alignRunning) return
+    setAlignRunning(true)
+    let log = ''
+    setMessages(prev => [...prev, { role: 'assistant', content: `Aligning timeline to calendar for **${activeProject}**…` }])
+    try {
+      for await (const event of runAlignTimeline(activeProject) as AsyncGenerator<BuildPlanEvent>) {
+        if (event.type === 'log') {
+          log += event.message + '\n'
+          setMessages(prev => {
+            const next = [...prev]
+            next[next.length - 1] = { role: 'assistant', content: `Aligning timeline to calendar for **${activeProject}**…\n\`\`\`\n${log}\`\`\`` }
+            return next
+          })
+        } else if (event.type === 'done') {
+          setMessages(prev => {
+            const next = [...prev]
+            next[next.length - 1] = { role: 'assistant', content: `Aligned timeline written to \`${event.note_path}\`` }
+            return next
+          })
+        } else if (event.type === 'error') {
+          setError(event.message)
+          setMessages(prev => prev.slice(0, -1))
+        }
+      }
+    } catch (e) {
+      setError(String(e))
+      setMessages(prev => prev.slice(0, -1))
+    } finally {
+      setAlignRunning(false)
+    }
+  }
+
   const handleBriefing = () => sendMessage(
     "Give me my daily briefing. Use Markdown: ## for each section heading (Today's Tasks, Upcoming Events, Carried Over), " +
     '- bullet lists for items within each section, and --- between sections. ' +
@@ -574,13 +608,22 @@ export default function ChatView() {
                 )}
               </div>
               {activeProject && (
-                <button
-                  onClick={handleRunBuildPlan}
-                  disabled={buildPlanRunning}
-                  className="px-3 py-1 text-[11px] rounded-full border border-emerald-700 text-emerald-400 hover:bg-emerald-900/40 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                >
-                  {buildPlanRunning ? 'Running…' : `Run Build Plan`}
-                </button>
+                <>
+                  <button
+                    onClick={handleRunBuildPlan}
+                    disabled={buildPlanRunning}
+                    className="px-3 py-1 text-[11px] rounded-full border border-emerald-700 text-emerald-400 hover:bg-emerald-900/40 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {buildPlanRunning ? 'Running…' : `Run Build Plan`}
+                  </button>
+                  <button
+                    onClick={handleAlignTimeline}
+                    disabled={alignRunning}
+                    className="px-3 py-1 text-[11px] rounded-full border border-sky-700 text-sky-400 hover:bg-sky-900/40 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {alignRunning ? 'Aligning…' : 'Align to Calendar'}
+                  </button>
+                </>
               )}
             </>
           )}

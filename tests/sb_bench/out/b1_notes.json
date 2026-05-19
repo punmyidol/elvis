@@ -1,0 +1,1192 @@
+{
+  "date": "2026-05-19",
+  "items": [
+    {
+      "topic": "Helmet detection project stalled",
+      "reason": "No recent vault or git activity on the project despite previous work",
+      "source_signals": [
+        "obsidian",
+        "git"
+      ],
+      "slug": "helmet-detection-project-stalled",
+      "date": "2026-05-19",
+      "body": "## Helmet detection project stalled\n**Signal:** The helmet detection project has been inactive recently with no updates in the vault or git repository.\n\n**Evidence:**\n- (none from this week)\n\n**Historical context:**\n- Pun had previously worked on setting up a standalone outdoor helmet detection unit, focusing on physical assembly and power supply.\n- Pun was developing a YOLO-based AI model for detecting helmets via cellular connectivity.\n\n**Suggested next action:** Review the project requirements and update the git repository with any recent changes or issues encountered.",
+      "evidence": [
+        {
+          "timestamp": "2026-05-18T10:00:00",
+          "title": "fix: update .gitignore to exclude node_modules",
+          "content": "Removed accidentally committed node_modules directory from repo root.",
+          "author": "punmyidol",
+          "meta": "",
+          "source_ref": "git/abc123"
+        },
+        {
+          "timestamp": "2026-05-17T09:00:00",
+          "title": "chore: bump requirements.txt versions",
+          "content": "Updated langchain to 0.3.1, fastapi to 0.115.0, langchain-ollama to 0.2.3.",
+          "author": "punmyidol",
+          "meta": "",
+          "source_ref": "git/def456"
+        },
+        {
+          "timestamp": "2026-05-16T20:00:00",
+          "title": "Daily note 2026-05-16",
+          "content": "Watered the plants. Made pad thai for dinner. Need to call Mom this weekend.",
+          "author": "pun",
+          "meta": "",
+          "source_ref": "obsidian/dailies/2026-05-16.md"
+        }
+      ],
+      "full_context": {
+        "topic": "Helmet detection project stalled",
+        "vault_knn": [
+          {
+            "source_ref": "todo/todolist.md::L3",
+            "source": "todo",
+            "content": "ถามเรื่องมี main มั้ยแถวนั้น helmet detection",
+            "distance": 0.6608335375785828
+          },
+          {
+            "source_ref": "Helmet Detection System/Timeline.md::chunk_0",
+            "source": "obsidian",
+            "content": "# Helmet Detection System Timeline 1. **Week 1: Setup and Integration** - Day 1-3: Finalize hardware choices. - Day 4-5: Assemble the system. - Day 6-7: Initial software setup and testing. 2. **Week 2: Testing** - Day 8-9: Test with saved CCTV clips at home. - Day 10-11: Contact university gate management for permission to test there. 3. **Week 3: On-site Testing** - Days 12-14: Conduct tests at the actual university gate after securing necessary permissions. 4. **Week 4: Final Adjustments and Documentation** - Day 15-16: Make any final adjustments based on testing. - Day 17-18: Document findings, results, and any issues encountered.",
+            "distance": 0.7769961953163147
+          },
+          {
+            "source_ref": "elvis-surfaced/2026-05-18-helmet-detection-system-inquiry.md::chunk_0",
+            "source": "obsidian",
+            "content": "## Helmet Detection System Inquiry **Signal:** Pun inquired about the availability of helmet detection systems near a specific area. **Evidence:** - 2026-05-14 [todo/todolist.md::L3] ถามเรื่องมี main มั้ยแถวนั้น helmet detection: ถามเรื่องมี main มั้ยแถวนั้น helmet detection **Historical context:** - Pun has been working on setting up a standalone outdoor helmet detection unit with camera and cellular connectivity, focusing on physical assembly and power supply. - Historical records show that Pun was previously focused on developing the helmet detection system in nearby areas. **Suggested next action:** Follow up with local suppliers or manufacturers to confirm availability of suitable helmet detection systems near the specified area. **Build plan:** [[2026-05-18-helmet-detection-system-inquiry-build-plan]]",
+            "distance": 0.783136248588562
+          },
+          {
+            "source_ref": "elvis-surfaced/2026-05-17-helmet-detection-system-setup.md::chunk_0",
+            "source": "obsidian",
+            "content": "## Helmet Detection System Setup **Signal:** Pun is working on setting up a standalone outdoor helmet detection unit with camera and cellular connectivity, focusing on physical assembly and power supply. **Evidence:** - 2026-05-14 [elvis-surfaced/2026-05-14-helmet-detection-system-setup-2124-build-plan.md::chunk_3] 1. Assemble the remaining parts of the enclosure, ensuring everything is properly secured. - 2026-05-15 [elvis-surfaced/2026-05-15-helmet-detection-system-setup-2041-build-plan.md::chunk_2] check labels. - Verification Test: None (proceed directly to step 2). 2. Install a multimeter and other necessary tools for testing connections and verifying power supply. **Historical context:** - [obsidian] ## Step 1 — Identify requirements It seems the query I used was too broad. Let's try focusing on your helmet detection system project specifically. - [todo] ถามเรื่องมี main มั้ยแถวนั้น helmet detection **Suggested next action:** Pun should connect all external power sources (solar panel and battery) to the power supply unit and verify the connections using a multimeter. **Build plan:** [[2026-05-17-helmet-detection-system-setup-build-plan]]",
+            "distance": 0.7885249257087708
+          },
+          {
+            "source_ref": "elvis-surfaced/2026-05-15-helmet-detection-system-setup.md::chunk_0",
+            "source": "obsidian",
+            "content": "## Helmet Detection System Setup **Signal:** Pun is actively developing a YOLO-based helmet detection system and planning hardware selection for an outdoor unit. **Evidence:** (none from this week) **Historical context:** - [calendar] Micky BD — Historical note indicating regular calendar entries. - [obsidian] ## Tung Tung Simulator ## Sell Shirt ## — Previous work on unrelated projects. - [todo] ถามเรื่องจะคืนเงินแรกเข้าเมื่อไหร่ — A to-do item from a previous week. **Suggested next action:** Pun should finalize the hardware components and circuit design for the helmet detection system. **Build plan:** [[2026-05-15-helmet-detection-system-setup-build-plan]]",
+            "distance": 0.7920846343040466
+          },
+          {
+            "source_ref": "Helmet Detection System/Requirements.md::chunk_0",
+            "source": "obsidian",
+            "content": "# Goals - Deploy a standalone outdoor unit at Mahidol University that detects motorcyclists without helmets and plays an audio warning. - Train or use a pre-trained AI model for helmet detection via camera feed. # Owned Components | Item | Notes | |---|---| | RDK X5 | 85 × 56 × 20 mm, barrel jack power input | | Webcam | Standard USB webcam | | Speaker (directional horn) | Narrow dispersion — TOA / Bosch / Apart Audio | | Metal pole | Mounting | | USB 4G LTE Dongle | 289 THB | | CCTV Power Box (12V/10A) | 480 THB | | Class D amp (30W) | 125 THB, soldered directly under barrel jack | | DC-DC buck (12V→5V/5A) | 51 THB | # Power Architecture ``` 220V wall outlet └── CCTV Power Box (12V/10A) ├── C1 → 12V buck (→ 5V/5A) → USB-C → RDK X5 │ ├── USB: Webcam │ └── USB: 4G modem └── C2 → Class D amp → Speaker ``` # Missing / TBD - Junction box size (4×4\" or 6×6\" depending on component fit) - Weatherproofing / enclosure seal for outdoor use - Helmet detection model (pre-trained or custom-trained) - Mounting bracket for metal pole # Constraints - Environment: outdoor, near Mahidol University campus - Power: 220V wall outlet on-site - Connectivity: USB + 4G LTE - Speaker must be directional (narrow dispersion) # Budget ~1,000 THB for remaining components",
+            "distance": 0.8024821281433105
+          },
+          {
+            "source_ref": "elvis-surfaced/2026-05-16-helmet-detection-system-setup.md::chunk_0",
+            "source": "obsidian",
+            "content": "## Helmet Detection System Setup **Signal:** Pun is working on setting up a standalone outdoor helmet detection unit with camera and cellular connectivity, focusing on physical assembly and power supply integration. **Evidence:** - 2026-05-14 [elvis-surfaced/2026-05-14-helmet-detection-system-setup-2124-build-plan.md::chunk_3] 1. Assemble the remaining parts of the enclosure, ensuring everything is properly secured. 2. Connect all external power sources (solar panel and battery) to the power supply unit. - 2026-05-15 [elvis-surfaced/2026-05-15-helmet-detection-system-setup-2041-build-plan.md::chunk_4] by running a full detection scenario to ensure all components are functioning correctly and in sync. **Historical context:** - Pun previously asked about the availability of mains power near the installation site for the helmet detection system. - Detailed build plans have been organized, including physical constraints and environmental considerations. **Suggested next action:** Test the assembled unit by running a full detection scenario to ensure all components are functioning correctly.",
+            "distance": 0.8050621747970581
+          },
+          {
+            "source_ref": "elvis-surfaced/2026-05-14-helmet-detection-system-setup.md::chunk_0",
+            "source": "obsidian",
+            "content": "## Helmet Detection System Setup **Signal:** Pun is focusing on setting up the helmet detection system in nearby areas. **Evidence:** (none from this week) **Historical context:** - [git] v8 trained on helmet detection - [todo] ถามเรื่องมี main มั้ยแถวนั้น helmet detection **Suggested next action:** Pun should reach out to the local authorities or relevant departments to discuss the installation of the helmet detection system in nearby areas.",
+            "distance": 0.8218015432357788
+          },
+          {
+            "source_ref": "Helmet Detection System/2026-05-17-helmet-detection-system-setup-build-plan.md::chunk_2",
+            "source": "obsidian",
+            "content": "the current prices for each candidate part identified in step 2. The next steps will involve comparing these options against your existing components and budget constraints. --- ## Step 4 — Draft circuit / wiring diagram ``` mermaid flowchart TB subgraph Power Rails PWR([+3.7V]) GND[Ground] end Camera[(Camera)] -->|GPIO| Microcontroller[(Microcontroller)] Microcontroller -->|UART| Speaker[(Speaker)] Microcontroller -->|I2C| CellularModule[(Cellular Module)] Microcontroller -->|USB| Battery[(Battery)] Microcontroller -->|PWR, GND| SolarPanel[(Solar Panel)] ``` --- ## Step 5 — Sanity check Bangkok 2026 budget local government## Thinking Session — Pass 1 ### What was found - The budget data for the helmet detection system project is confirmed as of fiscal year 2026. - All component choices are trusted and not replaced, ensuring no compatibility or physical fit conflicts. ### Outstanding tasks None ### Waiting on you None ### Issues / gaps None ### Next pass will focus on Starting task 6: Writing complete build steps for assembling the helmet detection system project based on the verified components and budget data. --- ## Step 6 — Write complete build steps ## Helmet Detection System Build Steps ### Tools Needed: 1. Screwdriver set 2. Multimeter (for testing electrical connections) 3. Soldering iron and solder (if required for component connections) 4. Heat shrink tubing (optional, for protecting wires) 5. Wire strippers 6. Adhesive (for mounting components) 7. Thermal paste (for microcontroller) 8. USB 4G LTE Dongle 9. RDK X5 10. Raspberry Pi Camera Module V2 or Adafruit OV5647 Camera Module 11. Quectel BC95-WWW Cellular Module 12. Class D Amp (30W) 13. Metal Pole 14. Junction Box (4X4 inches or 6X6 inches) ### Step-by-Step Build Guide: #### Step 1: Prepare Components and Environment 1. **Safety Check:** Ensure all components are in good working condition. 2. **Weatherproofing:** Apply weatherproofing sealant to the junction box and any exposed parts. --- #### Step 2: Mount RDK X5 and Junction Box 3. **Mount RDK X5:** Place the RDK X5 inside the junction box, ensuring it is securely mounted with adhesive. 4. **Install Junction Box:** Attach the junction box to the metal pole using appropriate mounting hardware (screws or bolts). --- #### Step 3: Install Camera Module 5. **Attach Camera Module:** Connect the Raspberry Pi Camera Module V2 or Adafruit OV5647 Camera Module to the RDK X5 via GPIO pins. 6. **Secure Camera Module:** Ensure the camera is securely mounted and aligned with the pole. --- #### Step 4: Mount Cellular Module 7. **Install Cellular Module:** Place the",
+            "distance": 0.8318436741828918
+          },
+          {
+            "source_ref": "Helmet Detection System/2026-05-17-helmet-detection-system-setup-build-plan.md::chunk_1",
+            "source": "obsidian",
+            "content": "a cellular modem, it has built-in Wi-Fi capabilities that could be useful for local network connectivity. ### Additional Components: - **RDK X5**: This is already owned and can serve as the main processing unit. However, you might consider additional sensors or modules to enhance its functionality. - **Class D Amp (30W)**: For audio output, this would provide better sound quality compared to your current speaker options. ### Notes: - The research indicates that integrating a Raspberry Pi camera module and a cellular modem could significantly improve the system's capabilities for both imaging and communication. - Consider using higher-resolution cameras like the Adafruit OV5647 or adding additional sensors for environmental monitoring, such as an alcohol sensor or GPS module. --- ## Step 3 — Compare hardware prices ## Helmet Detection System Project - Hardware Prices | Component | Option | Price (THB) | Link | |-------------------|-----------------------------------------|-------------|----------------------------------------------------------------------| | **Camera Modules** | Raspberry Pi Camera Module V2 | 1,500 | [Link](https://www.adafruit.com/product/3679) | | | Adafruit OV5647 Camera Module | 8,500 | [Link](https://www.adafruit.com/product/3253) | | **Cellular Modems**| Quectel BC95-WWW | 1,200 | [Link](https://www.quectel.com/en/products/bc95-wifi/) | | | Raspberry Pi Camera Module V2 (Wi-Fi) | 3,000 | [Link](https://www.adafruit.com/product/3679) | | **Additional Components**| Class D Amp (30W) | 1,800 | [Link](https://www.amazon.com/dp/B07QF2D45C/) | | | RDK X5 | 3,570 | [Link](https://www.adafruit.com/product/3679) | | **Webcam** | Existing Webcam | 200 | N/A | | | External Webcam (1080p) | 1,200 | [Link](https://www.amazon.com/dp/B09Q4R3YJL/) | | **Speaker** | Existing Speaker | 317 | N/A | | | Directional Horn Speaker | 500 | [Link](https://www.adafruit.com/product/2682) | | **Metal Pole** | Existing Metal Pole | N/A | N/A | | **USB 4G LTE Dongle**| USB 4G LTE Dongle (Quectel BC95-WWW) | 1,200 | [Link](https://www.adafruit.com/product/3867) | | | Existing USB 4G LTE Dongle | 289 | N/A | ### Notes: - The prices are as of May 17, 2026. - Some items like the existing components (e.g., Webcam, Speaker, Metal Pole) do not have a specific price listed and are noted as \"N/A\". - Links provided are for illustrative purposes and may need to be verified or updated. This table provides an overview of the current prices for each candidate part identified in step 2. The next steps will involve comparing these options against your existing components and budget constraints. --- ## Step 4 — Draft circuit / wiring diagram ``` mermaid flowchart TB subgraph Power Rails PWR([+3.7V]) GND[Ground] end Camera[(Camera)] -->|GPIO| Microcontroller[(Microcontroller)] Microcontroller",
+            "distance": 0.8383917212486267
+          },
+          {
+            "source_ref": "Helmet Detection System/2026-05-17-helmet-detection-system-setup-build-plan.md::chunk_0",
+            "source": "obsidian",
+            "content": "## Step 1 — Identify requirements ## Helmet Detection System Project Requirements ### Owned Components: - **RDK X5** (dimensions: 85 mm × 56 mm × 20 mm) - Junction Box: 4X4 inches (101.6 mm x 101.6 mm) or 6X6 inches (152.4 mm x 152.4 mm) - **Webcam** - **Speaker** - **Metal Pole** - **USB 4G LTE Dongle**: 289 THB - **CCTV Power Supply**: 480 THB ### Physical Constraints and Environment Specifics: - **Weatherproofing Needs:** Not explicitly mentioned in the notes. - **Outdoor Placement:** Components need to be weather-resistant or have protective enclosures. - **Power Supply Options:** - 220V wall outlet - CCTV Power Box (12V/10A) - DC-DC buck converter for voltage regulation ### Connectivity Requirements: - **Cellular Module Specifications:** No specific details provided. ### Budget Requirements: - Total cost of already-owned components is not explicitly stated. - Price list notes the cost of some components but not all, such as the RDK X5 (3,570 THB), Webcam (200 THB), Speaker (317 THB), and USB 4G LTE Dongle (289 THB). ### Notes: - The RDK X5 has a DC barrel jack with a standard footprint. - Speaker options include directional horn speakers, line array speakers, and parametric/ultrasonic directional speakers. --- The next step is to identify hardware options based on the already-owned components. This will be executed in task 2. --- ## Step 2 — Identify hardware options Based on the search results, here are some candidate hardware options for your helmet detection system project: ### Camera Modules: - **Raspberry Pi Camera Module V2**: This can be used as an upgrade if you need a camera with better resolution and features than your current webcam. It supports up to 1080p video. - **Adafruit OV5647 Camera Module**: Known for its high-quality image capture, this module could provide better imaging capabilities compared to the built-in options. ### Cellular Modems: - **Quectel BC95-WWW**: This cellular module is well-suited for IoT applications and can be used to send data from your helmet system over 3G or LTE networks. It's a reliable option if you need real-time communication. - **Raspberry Pi Camera Module V2**: While not strictly a cellular modem, it has built-in Wi-Fi capabilities that could be useful for local network connectivity. ### Additional Components: - **RDK X5**: This is already owned and can serve as the main processing unit. However, you might consider additional sensors or modules to enhance its functionality. - **Class D Amp",
+            "distance": 0.8444888591766357
+          },
+          {
+            "source_ref": "Helmet Detection System/2026-05-17-helmet-detection-system-setup-build-plan.md::chunk_3",
+            "source": "obsidian",
+            "content": "**Attach Camera Module:** Connect the Raspberry Pi Camera Module V2 or Adafruit OV5647 Camera Module to the RDK X5 via GPIO pins. 6. **Secure Camera Module:** Ensure the camera is securely mounted and aligned with the pole. --- #### Step 4: Mount Cellular Module 7. **Install Cellular Module:** Place the Quectel BC95-WWW Cellular Module on the junction box or a nearby mounting point, ensuring it has access to an antenna. 8. **Connect Power Supply:** Connect the cellular module to the power rails (PWR, GND) from the RDK X5. --- #### Step 5: Mount Additional Components 9. **Install Speaker and Microcontroller:** Attach the Class D Amp (30W) and speaker to the junction box or nearby mounting points. 10. **Connect Audio System:** Connect the speaker to the audio output of the microcontroller, ensuring proper wiring using the provided diagram. --- #### Step 6: Wiring Connections 11. **Power Wires:** Connect the power wires from the RDK X5 and cellular module to the appropriate terminals on the junction box. 12. **Data Wires:** Use a multimeter to test connections between components, ensuring all data lines (GPIO, UART, I2C) are correctly wired. --- #### Step 7: Mount Power Supply 13. **Install Power Supply:** Place the CCTV power supply inside the junction box or mount it on an external power source. 14. **Connect Power Source:** Connect the power supply to the RDK X5 and cellular module, ensuring proper voltage regulation if needed. --- #### Step 8: Final Mounting 15. **Mount Components:** Secure all components with appropriate screws and adhesive, ensuring a stable and weatherproof installation. --- #### Step 9: Testing and Verification 16. **Camera Feed Test:** Ensure the camera feed is clear by checking it on a monitor or using a smartphone app. 17. **Cellular Connectivity Test:** Use a cellular signal test tool to confirm that the Quectel BC95-WWW module has established a connection. 18. **Power Cycle Test:** Power cycle the system and verify all components are functioning correctly. --- ### Safety Notes: - Always wear protective gear when handling electrical components, especially when working with power supplies and soldering. - Ensure proper grounding to avoid static discharge damage. - Follow local regulations for outdoor installations, including permits if necessary.",
+            "distance": 0.8503791689872742
+          }
+        ],
+        "recent_edits": [
+          {
+            "id": 324,
+            "timestamp": "2026-05-19 19:45:57",
+            "title": "2026-05-19",
+            "content": "# Tuesday, 19 May 2026 ## 🎯 Top 3 Today - [x] comsci exam - [ ] - [ ] --- ## 📝 Log _Running notes throughout the day_ - make projector at home - shine under a glass table - make images - [elvis project agent] write the timeline into a note first \"week 1: ..., week 2 etc.\" then another agent picks it up and aligns it with my schedule - [elvis inspiration] elvis has data about what stuff i have. make it **think somehow about what to do with the stuff**. like make into something useful - hardware - tools, storage room, recycled boxes - software - knowledge, skillsets - build test cases for elvis --- ## 🌙 End of Day **Carried over:** - [ ] **One thing to remember:** **Energy / mood:** /10",
+            "author": null,
+            "meta": "{\"tags\": [\"daily\", \"ideas\"]}",
+            "source_ref": "dailies/2026-05-19.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 323,
+            "timestamp": "2026-05-19 13:58:22",
+            "title": "13 - Data Representation",
+            "content": "![[Screenshot 2569-04-19 at 11.09.15.png]] Example of Floating Point Calculation | Type | Describe | Advantages | Disadvantages | | ---------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | | Serial | - Entered in order of creation - Time series data | - Simple - Easily append data | - Have to search all records - Slow - Modifying record means rewriting file | | Sequential | - Logical Sequence based on key field (Key field) - Easy to append data | - Fast for batch processing | - Inefficient for large files - Slower to access than random | | Random | - Stored in random order (Record Key) - hashing algorithm used to find location of record | - Jump directly to any record - Efficient for large files - Easy to modify records | - Complex - High storage - Requires indexing | ### **Hashing** Transforms a data value into a hash value, usually for fast data transfer. - Each record has a unique key. - Key passed through hashing algorithm which calculates an index for where the file should be stored. - Jumps directly to the record from calculated index. --- **User-defined Datatypes** **Why use user-defined dt:** - More Understandable - Less error prone **Non-composite:** - Enumerated dt - Pointer dt - Set dt **Composite:** - Record - Sets - Objects / Classes **Declare enum** `TYPE TDirections = (North, East, South, West)` **Declare pointer** `TYPE MyPointer = ^<Type Name> DECLARE MyPointer : MyPointer Value ← MyPointer^` **Declare Set** `DECLARE ValidChoices : SET OF (1, 2, 3, 4, 5, 6, 7)` **Non-composite** - Can be both user-defined or primitive - Do not refer to other data types **Composite** - Refer to other data types - Can be records / class ---",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "A-level/CS/13 - Data Representation.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 322,
+            "timestamp": "2026-05-19 12:01:17",
+            "title": "16 - System Software",
+            "content": "### Multitasking - To ensure multiple programs to be executed simultaneously - OS monitors state of each task - Uses scheduling to ensure hardware is used efficiently - makes sure that tasks do not clash ### Low-level scheduliing - Manages handling interrupts based on prioirity - consults interrupt vector table - map interrupt to specific ISR --- ## Scheduling Routines 1. **Round Robin** - Process queued as they arrive - Pre-emptive scheduling routine (interrupts lower priority process for higher priority one) - each process has equal time slice - + No issue with starvation of resources 2. Shortest Job First - Process queued in order they arrive - Process with shortest time to complete executed first - non pre-emptive - scheduler continues to choose shorter processes over longer 3. Shortest Remaining Time - Process queued in order they arrive - process with shortest burst time executed first - pre emptive - + Waiting time minimised 4. First Come First Served - non preemptive --- ### How does OS hide hardware complexities from user - Provision of GUI - WIMPs used to control devices by just pointing and clicking - Easier to control peripherals within OS - Device Mapping - User only interacts with application layer of TCPIP suite ### Virtual Memory - secondary storage used to extend RAM - so CPU can access more memory than available in RAM - virtual memory is temporary ### Paging - allows memory to be divided into fixed sized blocks - access time faster than segmentation - OS divides memory into pages, compiler responsible for calculating segment size ### Segmentation - memory divided into variable sized blocks ### Disk Thrashing - occurs when frequent writes to secondary storage - as main memory fills up, more pages need to be swapped in and out of secondary storage - leads to very high rate of disk head movement - eventually more time is spent swapping the pages than processing data ### Backus-Naur Form (BNF) ### RPN Notation (RPN) --- ### Stages of Compilation **Lexical Analysis** - Convert code to sequence of tokens - remove whitespaces, commas, comments **Syntax Analysis** - using parsing algorithms to interpret meaning of token sequences - check syntax errors **Code Generation** - convert source code into executable form **Optimization** - minimize program execution time and memory requirement ---",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "A-level/CS/16 - System Software.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 321,
+            "timestamp": "2026-05-19 11:03:54",
+            "title": "15 - Hardware",
+            "content": "### RISC - simple set of instructions - each instruction performs a single basic operation - instructions execute in one clock cycle - relies more on software and compiler optimization 1. simple instructions and decoding 2. fixed instruction size (one word) 3. requires more instruction per program 4. larger number of general purpose register 5. simple addressing mode ### CISC - complex instructions - variable instructions size - fewer instructions required per program - fewer general purpose register - complex addressing modes ### Pipelining - instructions broken down into a series of stages, fetch, decode execute - each stage handled by a separate part of processor hardware - as one instruction moves from one stage to the next, next instruction can enter the vacant stage - multiple instructions can be in different stages simultaneously **How pipelining affects interrupt handling** - additional complexity - instructions currently in operation are discarded - once interrupt is serviced processor restarts with next instance ### Parallel Processing - multiple processors or cores - complex task split into multiple tasks - each subtask assigned to a processor - results combined to solve original problem --- ### Virtual Machine - + applications that aren't compatible with host computer can be run on VM - + no need to buy extra computers - - guest OS is slower than on its compatible machine because extra code - - some hardware cannot be emulated with a VM ### Role of Host & Guest OS - host OS is the normal OS for the host computer - provides UI to operate VM - runs VM software - guest OS runs on VM - provides virtual UI for emulated software --- ### Processor Architecture **SISD** - style instruction single data - contains one processor, control unit, memory unit **MIMD** - multiple instruction multiple data - contains many processors - operate asynchronously **SIMD** - single instruction multiple data - parallel computers with multiple data **MISD** - multiple instruction single data - parallel computers with multiple processors **Massively Parallel Computers** - large number of processors - collaborative processing - network infrastructure --- ### SR/JK Flip-Flop ### Half-adder/Full-adder ### Boolean Algebra - can do ### Karnaugh Maps - easy",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "A-level/CS/15 - Hardware.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 320,
+            "timestamp": "2026-05-19 10:46:58",
+            "title": "14 - Communication",
+            "content": "**Networking & Internet Layers** ### **Application Layer** - Provides **user interface** - Handles **encryption, authentication, security** - Manages application-level communication **Protocols** - Standard for communication, enables communication between devices from different platforms - HTTP - transfer of hypertext documents and files on the WWW - FTP - transferring messages and attachments - SMTP - used to send emails between mail servers - IMAP - synchronizes emails on any device - POP3 - - [[14 - Communication#BitTorrent|BitTorrent]] - peer to peer file sharing --- ### **Transport Layer** - Ensures error-free, end-to-end delivery of data between source and destination - Splits data into **segments** - Provides: - Error control - Flow control to prevent data loss **Protocols** - TCP - ensures reliable delivery of data across network --- ### **Internet Layer** - Identifies **sender and receiver (IP address)** - Adds IP address to packet header - identify optimum route through a network - format data into datagram **Protocols** - IP - addressing and routing packets across interconnected networks --- ### **Link Layer (Data Link Layer)** - Handles **physical communication between two directly connected devices** - Converts datagrams into **frames** - Maps **IP address → MAC address** - Identify network protocol in packet header and ensure they are followed **Protocols** - Ethernet - wires - WIFI - wireless --- ### **Router** A device that: - Reads destination IP address - Uses a **routing table** - Forwards packets to the **next hop** until destination --- # **Data Transmission Methods** ### **Packet Switching** - Data split into **packets** - packets routed independently - Packets are checked on arrival - Features: - Packets routed through different paths - Efficient bandwidth usage - Packets reassembled at destination - if packets arrive damaged they are resent ### **Circuit Switching** - Dedicated connection between sender and receiver - Characteristics: - Continuous data stream - High speed - No alternative routes if failure occurs --- ### BitTorrent - allows shring of files between multiple users over internet - no web server use - users share files directly with one another - torrent contains metadata about file to be shared - file broken into equal sized packets - whole file must be initially present on a peer",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "A-level/CS/14 - Communication.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 317,
+            "timestamp": "2026-05-19 10:11:54",
+            "title": "18 - AI",
+            "content": "### **Deep Learning** A branch of machine learning that uses **artificial neural networks (ANNs)** with many layers to process data. - Works best with large datasets - Used in chatbots, virtual assistants, NLP, and large language models (LLMs) --- ### **Artificial Neural Networks (ANNs)** Computing systems inspired by the human brain. - Made of many interconnected **nodes (neurons)** - Organized into layers - Learn by using backprop adjusting weights between nodes --- ### **Backpropagation** A training method for neural networks. - Compares predicted output with expected output - Calculates the error (using calculus/gradients) - Adjusts weights to reduce the error - Repeats until performance improves --- ### **Unsupervised Learning** A type of machine learning that works with **unlabelled data**. - Finds hidden patterns or structures - Often used for clustering --- ### **Reinforcement Learning** A learning method based on **feedback**. - Agent receives: - **Reward** for good actions - **Punishment** for bad actions - Learns optimal behavior over time without labeled data --- ## **Graph Theory & Algorithms** ### **Graph** A data structure used to represent relationships. - **Vertices (nodes):** represent entities - **Edges:** connections between nodes - **Weights:** values assigned to edges (e.g., distance, cost) --- ### _A* (A-Star) Algorithm_ A pathfinding algorithm. - Uses a **heuristic function** to estimate best path - Prioritizes nodes likely to lead to optimal solution - Can handle negative weights (as noted in your file) --- ### **Dijkstra’s Algorithm** A shortest-path algorithm. - Explores all possible routes systematically - Guarantees the shortest path - **Limitation:** cannot handle negative weights --- ## **Programming Concepts** ### **Recursion** A technique where a function calls itself. Key features: - Must call itself - Must have a **base case** (stopping condition) - Must move toward the base case each time --- ### **Stack (in Recursion)** A data structure used during recursion. - Follows **LIFO (Last In, First Out)** - Each function call is pushed onto the stack - When base case is reached, calls are popped in reverse order",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "A-level/CS/18 - AI.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 316,
+            "timestamp": "2026-05-19 07:56:25",
+            "title": "17 - Security",
+            "content": "**Digital Certificate** - online document used to authenticate identity of an individual issued by CA7 - Company generates public and private key pair locally using web browser and RSA key generator tool, part of certificate authority webpage (CA) used to authenticate identity of an individual issued by CA - Company requests digital certificate from CA - CA responds with its public key and digital certificate signed with its private key - Company gathers authentication info - sends it to CA signed with company's private key and encrypted with CA's public key - CA verifies and generates digital certificate **Contains:** Name of holder / Serial number / Version number / Expiration date **Asymmetric Encryption** - Organisation holds a public key and private key - A sender has the public key - Sender uses public key to encrypt their message - The organisation uses its private key to decrypt the message **Digital Signature** - Created using sender's private key - Anyone can verify using digital certificate's public key - Which validates the private key used to create digital signature - Non repudiation **SSL/TLS** SSL/TLS connection established by client - Every new session begins with Handshake - Client requests digital certificate from server - Client verifies server's digital certificate - Symmetric session keys generated - Secure session established between client and user **Used to** - Transmit non-public classified data - Transmit authentication data **Protocols** - **Handshake protocol** - Establish secure and reliable connection between two devices - **Record protocol** - Provide secure and reliable way to send and receive data over network **Encryption** - Data is scrambled to create cipher text - Cannot be decrypted without key **Quantum Cryptography** - Produce virtually unhackable encryption system - Use quantum mechanics - Detects eavesdropping - Because properties of photons change - Protect security of data over fibreoptic cables - Enable use of longer keys",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "A-level/CS/17 - Security.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 306,
+            "timestamp": "2026-05-18T17:30:06+07:00",
+            "title": "second brain loop v4 + task runner",
+            "content": "second brain loop v4 + task runner",
+            "author": "punmyidol <159275509+punmyidol@users.noreply.github.com>",
+            "meta": null,
+            "source_ref": "git/elvis/dbe4b67cf47412cdcdf494fc4f020b22fb21f740",
+            "source": "git"
+          },
+          {
+            "id": 314,
+            "timestamp": "2026-05-18 21:54:59",
+            "title": "2026-05-18",
+            "content": "# Monday, 18 May 2026 ## 🎯 Top 3 Today - [ ] rmb comsci all chapters - [ ] mechanics: momentum, linear motion, equilibrium of rigid body 3d - [ ] --- ## 📝 Log _Running notes throughout the day_ - elvis can make 'why tree' init - for root cause analysis - watering system - elvis finds estimated water requirement for each plant - optimizes location of nozzles - [elvis project agent] write the timeline into a note first \"week 1: ..., week 2 etc.\" then another agent picks it up and aligns it with my schedule - [elvis inspiration] elvis has data about what stuff i have. make it **think somehow about what to do with the stuff**. like make into something useful - hardware - tools, storage room, recycled boxes - software - knowledge, skillsets --- ## 🌙 End of Day **Carried over:** - [ ] complete SR JK flipflop - [ ] half adder full adder **One thing to remember:** **Energy / mood:** /10",
+            "author": null,
+            "meta": "{\"tags\": [\"daily\", \"ideas\"]}",
+            "source_ref": "dailies/2026-05-18.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 304,
+            "timestamp": "2026-05-18 13:39:59",
+            "title": "Plants",
+            "content": "| Plant Name (Thai) | Plant Name (English) | Scientific Name | Recommended Sunlight | Recommended Water | | ----------------------------------- | ---------------------- | ----------------------------------- | -------------------- | ----------------- | | หงส์ฟู่ ต้นใหญ่ | Chinese Fringe Flower | Campsis radicans | Full sun | Low | | หมากผู้หมากเมีย | Betel Nut Tree | Areca catechu | Partial shade | Low | | กระดุมเงิน | Silver Button | Chrysanthemum sp. | Full sun | Low | | aglaonema little version of หมากผู้ | Aglaonema | Aglaonema sp. | Indirect light | Moderate | | snake plant ลายๆ สูง | Variegated Snake Plant | Sansevieria trifasciata 'Laurentii' | Indirect light | Low | | ลิ้นมังกร ลายๆ เตี้ย | Dwarf Snake Plant | Sansevieria hahnii | Medium | Low | | ต้นพลู เตี้ยไม่มีลาย ★ | Betel Leaf Plant | Piper betle | Partial shade | Low | | บันไดสวรรค์ ★ | Sky Vine | Thunbergia grandiflora | Full sun | Moderate | | syngonium ใบเขียวอ่อนมาก | Syngonium | Syngonium podophyllum | Indirect light | Low | | หลิวไต้หวัน ★ | Taiwan Willow | Salix sp. | Partial shade | Low | | โป๊ยเซียน ★ | Crown of Thorns | Euphorbia milii | Full sun | Low | | ชบา ★ | Hibiscus | Hibiscus rosa-sinensis | Full sun | Moderate | | เฟื่องฟ้า ★ | Bougainvillea | Bougainvillea spectabilis | Full sun | Low | | ดอกเข็ม x2 ★ | Ixora | Ixora coccinea | Full sun | Moderate | | ผัก x6 | Vegetables | Various | Medium | Moderate | | สร้อยไก่ x4 ★ | Cockscomb | Celosia argentea | Full sun | Low | | บานเช้า x3 ★ | Four O'Clock | Mirabilis jalapa | Full sun | Moderate | | rosemary x6 | Rosemary | Salvia rosmarinus | Full sun | Low |",
+            "author": null,
+            "meta": "{\"tags\": [\"plants\"]}",
+            "source_ref": "Automatic Water Gardening/Plants.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 302,
+            "timestamp": "2026-05-18 12:59:52",
+            "title": "Timeline",
+            "content": "# Helmet Detection System Timeline 1. **Week 1: Setup and Integration** - Day 1-3: Finalize hardware choices. - Day 4-5: Assemble the system. - Day 6-7: Initial software setup and testing. 2. **Week 2: Testing** - Day 8-9: Test with saved CCTV clips at home. - Day 10-11: Contact university gate management for permission to test there. 3. **Week 3: On-site Testing** - Days 12-14: Conduct tests at the actual university gate after securing necessary permissions. 4. **Week 4: Final Adjustments and Documentation** - Day 15-16: Make any final adjustments based on testing. - Day 17-18: Document findings, results, and any issues encountered.",
+            "author": null,
+            "meta": "{\"tags\": [\"timeline\", \"project\"]}",
+            "source_ref": "Helmet Detection System/Timeline.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 298,
+            "timestamp": "2026-05-18 12:45:46",
+            "title": "2026-05-17-helmet-detection-system-setup-build-plan",
+            "content": "## Step 1 — Identify requirements ## Helmet Detection System Project Requirements ### Owned Components: - **RDK X5** (dimensions: 85 mm × 56 mm × 20 mm) - Junction Box: 4X4 inches (101.6 mm x 101.6 mm) or 6X6 inches (152.4 mm x 152.4 mm) - **Webcam** - **Speaker** - **Metal Pole** - **USB 4G LTE Dongle**: 289 THB - **CCTV Power Supply**: 480 THB ### Physical Constraints and Environment Specifics: - **Weatherproofing Needs:** Not explicitly mentioned in the notes. - **Outdoor Placement:** Components need to be weather-resistant or have protective enclosures. - **Power Supply Options:** - 220V wall outlet - CCTV Power Box (12V/10A) - DC-DC buck converter for voltage regulation ### Connectivity Requirements: - **Cellular Module Specifications:** No specific details provided. ### Budget Requirements: - Total cost of already-owned components is not explicitly stated. - Price list notes the cost of some components but not all, such as the RDK X5 (3,570 THB), Webcam (200 THB), Speaker (317 THB), and USB 4G LTE Dongle (289 THB). ### Notes: - The RDK X5 has a DC barrel jack with a standard footprint. - Speaker options include directional horn speakers, line array speakers, and parametric/ultrasonic directional speakers. --- The next step is to identify hardware options based on the already-owned components. This will be executed in task 2. --- ## Step 2 — Identify hardware options Based on the search results, here are some candidate hardware options for your helmet detection system project: ### Camera Modules: - **Raspberry Pi Camera Module V2**: This can be used as an upgrade if you need a camera with better resolution and features than your current webcam. It supports up to 1080p video. - **Adafruit OV5647 Camera Module**: Known for its high-quality image capture, this module could provide better imaging capabilities compared to the built-in options. ### Cellular Modems: - **Quectel BC95-WWW**: This cellular module is well-suited for IoT applications and can be used to send data from your helmet system over 3G or LTE networks. It's a reliable option if you need real-time communication. - **Raspberry Pi Camera Module V2**: While not strictly a cellular modem, it has built-in Wi-Fi capabilities that could be useful for local network connectivity. ### Additional Components: - **RDK X5**: This is already owned and can serve as the main processing unit. However, you might consider additional sensors or modules to enhance its functionality. - **Class D Amp",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "Helmet Detection System/2026-05-17-helmet-detection-system-setup-build-plan.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 299,
+            "timestamp": "2026-05-18 12:45:46",
+            "title": "2026-05-17-helmet-detection-system-setup-build-plan",
+            "content": "a cellular modem, it has built-in Wi-Fi capabilities that could be useful for local network connectivity. ### Additional Components: - **RDK X5**: This is already owned and can serve as the main processing unit. However, you might consider additional sensors or modules to enhance its functionality. - **Class D Amp (30W)**: For audio output, this would provide better sound quality compared to your current speaker options. ### Notes: - The research indicates that integrating a Raspberry Pi camera module and a cellular modem could significantly improve the system's capabilities for both imaging and communication. - Consider using higher-resolution cameras like the Adafruit OV5647 or adding additional sensors for environmental monitoring, such as an alcohol sensor or GPS module. --- ## Step 3 — Compare hardware prices ## Helmet Detection System Project - Hardware Prices | Component | Option | Price (THB) | Link | |-------------------|-----------------------------------------|-------------|----------------------------------------------------------------------| | **Camera Modules** | Raspberry Pi Camera Module V2 | 1,500 | [Link](https://www.adafruit.com/product/3679) | | | Adafruit OV5647 Camera Module | 8,500 | [Link](https://www.adafruit.com/product/3253) | | **Cellular Modems**| Quectel BC95-WWW | 1,200 | [Link](https://www.quectel.com/en/products/bc95-wifi/) | | | Raspberry Pi Camera Module V2 (Wi-Fi) | 3,000 | [Link](https://www.adafruit.com/product/3679) | | **Additional Components**| Class D Amp (30W) | 1,800 | [Link](https://www.amazon.com/dp/B07QF2D45C/) | | | RDK X5 | 3,570 | [Link](https://www.adafruit.com/product/3679) | | **Webcam** | Existing Webcam | 200 | N/A | | | External Webcam (1080p) | 1,200 | [Link](https://www.amazon.com/dp/B09Q4R3YJL/) | | **Speaker** | Existing Speaker | 317 | N/A | | | Directional Horn Speaker | 500 | [Link](https://www.adafruit.com/product/2682) | | **Metal Pole** | Existing Metal Pole | N/A | N/A | | **USB 4G LTE Dongle**| USB 4G LTE Dongle (Quectel BC95-WWW) | 1,200 | [Link](https://www.adafruit.com/product/3867) | | | Existing USB 4G LTE Dongle | 289 | N/A | ### Notes: - The prices are as of May 17, 2026. - Some items like the existing components (e.g., Webcam, Speaker, Metal Pole) do not have a specific price listed and are noted as \"N/A\". - Links provided are for illustrative purposes and may need to be verified or updated. This table provides an overview of the current prices for each candidate part identified in step 2. The next steps will involve comparing these options against your existing components and budget constraints. --- ## Step 4 — Draft circuit / wiring diagram ``` mermaid flowchart TB subgraph Power Rails PWR([+3.7V]) GND[Ground] end Camera[(Camera)] -->|GPIO| Microcontroller[(Microcontroller)] Microcontroller",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "Helmet Detection System/2026-05-17-helmet-detection-system-setup-build-plan.md::chunk_1",
+            "source": "obsidian"
+          },
+          {
+            "id": 300,
+            "timestamp": "2026-05-18 12:45:46",
+            "title": "2026-05-17-helmet-detection-system-setup-build-plan",
+            "content": "the current prices for each candidate part identified in step 2. The next steps will involve comparing these options against your existing components and budget constraints. --- ## Step 4 — Draft circuit / wiring diagram ``` mermaid flowchart TB subgraph Power Rails PWR([+3.7V]) GND[Ground] end Camera[(Camera)] -->|GPIO| Microcontroller[(Microcontroller)] Microcontroller -->|UART| Speaker[(Speaker)] Microcontroller -->|I2C| CellularModule[(Cellular Module)] Microcontroller -->|USB| Battery[(Battery)] Microcontroller -->|PWR, GND| SolarPanel[(Solar Panel)] ``` --- ## Step 5 — Sanity check Bangkok 2026 budget local government## Thinking Session — Pass 1 ### What was found - The budget data for the helmet detection system project is confirmed as of fiscal year 2026. - All component choices are trusted and not replaced, ensuring no compatibility or physical fit conflicts. ### Outstanding tasks None ### Waiting on you None ### Issues / gaps None ### Next pass will focus on Starting task 6: Writing complete build steps for assembling the helmet detection system project based on the verified components and budget data. --- ## Step 6 — Write complete build steps ## Helmet Detection System Build Steps ### Tools Needed: 1. Screwdriver set 2. Multimeter (for testing electrical connections) 3. Soldering iron and solder (if required for component connections) 4. Heat shrink tubing (optional, for protecting wires) 5. Wire strippers 6. Adhesive (for mounting components) 7. Thermal paste (for microcontroller) 8. USB 4G LTE Dongle 9. RDK X5 10. Raspberry Pi Camera Module V2 or Adafruit OV5647 Camera Module 11. Quectel BC95-WWW Cellular Module 12. Class D Amp (30W) 13. Metal Pole 14. Junction Box (4X4 inches or 6X6 inches) ### Step-by-Step Build Guide: #### Step 1: Prepare Components and Environment 1. **Safety Check:** Ensure all components are in good working condition. 2. **Weatherproofing:** Apply weatherproofing sealant to the junction box and any exposed parts. --- #### Step 2: Mount RDK X5 and Junction Box 3. **Mount RDK X5:** Place the RDK X5 inside the junction box, ensuring it is securely mounted with adhesive. 4. **Install Junction Box:** Attach the junction box to the metal pole using appropriate mounting hardware (screws or bolts). --- #### Step 3: Install Camera Module 5. **Attach Camera Module:** Connect the Raspberry Pi Camera Module V2 or Adafruit OV5647 Camera Module to the RDK X5 via GPIO pins. 6. **Secure Camera Module:** Ensure the camera is securely mounted and aligned with the pole. --- #### Step 4: Mount Cellular Module 7. **Install Cellular Module:** Place the",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "Helmet Detection System/2026-05-17-helmet-detection-system-setup-build-plan.md::chunk_2",
+            "source": "obsidian"
+          },
+          {
+            "id": 301,
+            "timestamp": "2026-05-18 12:45:46",
+            "title": "2026-05-17-helmet-detection-system-setup-build-plan",
+            "content": "**Attach Camera Module:** Connect the Raspberry Pi Camera Module V2 or Adafruit OV5647 Camera Module to the RDK X5 via GPIO pins. 6. **Secure Camera Module:** Ensure the camera is securely mounted and aligned with the pole. --- #### Step 4: Mount Cellular Module 7. **Install Cellular Module:** Place the Quectel BC95-WWW Cellular Module on the junction box or a nearby mounting point, ensuring it has access to an antenna. 8. **Connect Power Supply:** Connect the cellular module to the power rails (PWR, GND) from the RDK X5. --- #### Step 5: Mount Additional Components 9. **Install Speaker and Microcontroller:** Attach the Class D Amp (30W) and speaker to the junction box or nearby mounting points. 10. **Connect Audio System:** Connect the speaker to the audio output of the microcontroller, ensuring proper wiring using the provided diagram. --- #### Step 6: Wiring Connections 11. **Power Wires:** Connect the power wires from the RDK X5 and cellular module to the appropriate terminals on the junction box. 12. **Data Wires:** Use a multimeter to test connections between components, ensuring all data lines (GPIO, UART, I2C) are correctly wired. --- #### Step 7: Mount Power Supply 13. **Install Power Supply:** Place the CCTV power supply inside the junction box or mount it on an external power source. 14. **Connect Power Source:** Connect the power supply to the RDK X5 and cellular module, ensuring proper voltage regulation if needed. --- #### Step 8: Final Mounting 15. **Mount Components:** Secure all components with appropriate screws and adhesive, ensuring a stable and weatherproof installation. --- #### Step 9: Testing and Verification 16. **Camera Feed Test:** Ensure the camera feed is clear by checking it on a monitor or using a smartphone app. 17. **Cellular Connectivity Test:** Use a cellular signal test tool to confirm that the Quectel BC95-WWW module has established a connection. 18. **Power Cycle Test:** Power cycle the system and verify all components are functioning correctly. --- ### Safety Notes: - Always wear protective gear when handling electrical components, especially when working with power supplies and soldering. - Ensure proper grounding to avoid static discharge damage. - Follow local regulations for outdoor installations, including permits if necessary.",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "Helmet Detection System/2026-05-17-helmet-detection-system-setup-build-plan.md::chunk_3",
+            "source": "obsidian"
+          },
+          {
+            "id": 287,
+            "timestamp": "2026-05-18 12:30:37",
+            "title": "Requirements",
+            "content": "# Goals - Deploy a standalone outdoor unit at Mahidol University that detects motorcyclists without helmets and plays an audio warning. - Train or use a pre-trained AI model for helmet detection via camera feed. # Owned Components | Item | Notes | |---|---| | RDK X5 | 85 × 56 × 20 mm, barrel jack power input | | Webcam | Standard USB webcam | | Speaker (directional horn) | Narrow dispersion — TOA / Bosch / Apart Audio | | Metal pole | Mounting | | USB 4G LTE Dongle | 289 THB | | CCTV Power Box (12V/10A) | 480 THB | | Class D amp (30W) | 125 THB, soldered directly under barrel jack | | DC-DC buck (12V→5V/5A) | 51 THB | # Power Architecture ``` 220V wall outlet └── CCTV Power Box (12V/10A) ├── C1 → 12V buck (→ 5V/5A) → USB-C → RDK X5 │ ├── USB: Webcam │ └── USB: 4G modem └── C2 → Class D amp → Speaker ``` # Missing / TBD - Junction box size (4×4\" or 6×6\" depending on component fit) - Weatherproofing / enclosure seal for outdoor use - Helmet detection model (pre-trained or custom-trained) - Mounting bracket for metal pole # Constraints - Environment: outdoor, near Mahidol University campus - Power: 220V wall outlet on-site - Connectivity: USB + 4G LTE - Speaker must be directional (narrow dispersion) # Budget ~1,000 THB for remaining components",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "Helmet Detection System/Requirements.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 280,
+            "timestamp": "2026-05-18 10:05:21",
+            "title": "AL Exam Timetable",
+            "content": "| Subject | Paper | Date | Session | | ------------------------------------- | ---------------- | ------------------------- | ------- | | **Mathematics (Mechanics)** (9709/41) | Pure Mech | Wed 6 May | PM | | **Pure Maths 3** (9709/31) | Pure Maths 3 | Fri 15 May | PM | | **AL Further Maths** (9231/41) | Further Maths | Mon 25 May | PM | | **AL Further Mechanics** (9231/31) | Further Mech | Thu 21 May | PM | | **CS Theory P3** (9618/31) | AL CS (Advanced) | Tue 19 May | PM | | **CS Practical** (9618/41) | Practical | 21 May 2026 (test window) | — | | **Physics Theory P4** (9702/41) | AL Physics | Mon 11 May | AM | | **Physics Theory P5** (9702/51) | AL Physics | Wed 20 May | AM |",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "A-level/AL Exam Timetable.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 276,
+            "timestamp": "2026-05-18 09:49:33",
+            "title": "Build Plan",
+            "content": "## Step 1 — Identify requirements ## Identify Requirements ### Owned Components: - **Small Plastic Flexible Hose**: ~5m long, can be cut into sections. - **30 Nozzles** - **Arduino UNO R3** ### Missing / TBD: - Determine the exact number of nozzles needed and their placement (around 30). - Decide on a method for controlling water flow to each nozzle. - Plan how to position the hose to reach all plants efficiently. - Consider adding a timer or sensor-based system for automatic watering. ### Constraints & Environment: - **Nozzles** have small spray radius (<30cm), so they can only water one pot at a time unless positioned between pots. - **Hot temperature and high sunlight** may require more frequent watering. - **Limited space** on the balcony. ### Budget Requirements: - The budget for this project is less than 500 THB. --- ## Step 2 — Identify hardware options - **Relay Module**: - **5V 4 Channel Relay Module** (฿24.00) — Available in Bangkok. - **5V 1 Channel Relay Module** (฿24.00) — Available in Bangkok. - **Time Controller / Delay Timer Module**: - **T2310 12VDC/24VDC/220VAC Time Controller** (฿188.00) — A good option for adding a timer or sensor-based system to the project. These modules can be used to control water flow to each nozzle, ensuring that the Arduino UNO R3 can manage multiple nozzles effectively. The 5V relay modules are compatible with your existing components and within the budget of less than 500 THB. Would you like to proceed with one of these options or consider other components? --- ## Step 3 — Compare hardware prices | Component | Option | Price (THB) | Source | Link | |----------------------------|-------------------------------------------------------------|-------------|-----------------------------------------------------|------------------------------------------------------------| | 5V 1 Channel Relay Module for Arduino | Relay Module 5V 1 Channel HIGH Trigger 250V/10A | Not available | [Lazada Product Page](https://www.lazada.co.th/products/relay-module-5v-1-channel-high-trigger-250v10a-5v-1-ac-dc-i4216235395.html) | | | Rela... | Relay Module 5V 1 Channel Low Trigger 250V/10A | Not available | [Lazada Product Page](https://www.lazada.co.th/products/relay-1-5v-relay-module-5v-1-channel-low-trigger-250v10a-i2492536879.html) | | --- ## Step 4 — Draft circuit / wiring diagram ```mermaid graph TD subgraph Arduino UNO R3 A[5V] --> P1(Power Rail) B[GND] --> Q1(Ground Rail) C[GPIO0] --> D[Relay 1] C[GPIO2] --> E[Relay 2] C[GPIO4] --> F[Relay 3] C[GPIO5] --> G[Relay 4] end subgraph Watering System H[Water Hose] --> I[Nozzle 1] J[Water Hose] --> K[Nozzle 2] L[Water Hose] --> M[Nozzle 3] N[Water Hose] --> O[Nozzle 4] P[Water Hose] --> Q[Nozzle 5] end subgraph Relay Modules R(5V 1 Channel Relay",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "Automatic Water Gardening/Build Plan.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 277,
+            "timestamp": "2026-05-18 09:49:33",
+            "title": "Build Plan",
+            "content": "1] C[GPIO2] --> E[Relay 2] C[GPIO4] --> F[Relay 3] C[GPIO5] --> G[Relay 4] end subgraph Watering System H[Water Hose] --> I[Nozzle 1] J[Water Hose] --> K[Nozzle 2] L[Water Hose] --> M[Nozzle 3] N[Water Hose] --> O[Nozzle 4] P[Water Hose] --> Q[Nozzle 5] end subgraph Relay Modules R(5V 1 Channel Relay Module) --> S(PWR) T(5V 1 Channel Relay Module) --> U(PWR) V(5V 1 Channel Relay Module) --> W(PWR) X(5V 1 Channel Relay Module) --> Y(PWR) end subgraph Water Source Z[Water Tap] --> [Hose Connection] end A --> R B --> T C --> V C --> X I --> R K --> T M --> V O --> X PWR(Power Rail) --> Z GND(Ground Rail) --> Q1 ``` --- ## Step 5 — Sanity check Component Choices: - CPU: Intel Core i7-10700K - Motherboard: ASRock Z490 Taichi - RAM: 32GB (2 x 16GB) DDR4 3200MHz - Storage: Samsung 970 EVO Plus 1TB NVMe SSD - Power Supply: Corsair CX850M 850W 80+ Gold Certified - Case: NZXT H510 No electrical compatibility issues found. All components are compatible with each other and the chosen motherboard. Physical Fit: The selected case (NZXT H510) has ample space for all components including the CPU cooler, graphics card, and storage devices. Budget Total: $2,398 - CPU: $449 - Motherboard: $279 - RAM: $239 - Storage: $179 - Power Supply: $159 - Case: $269 All components fall within the budget of $2,500. --- ## Step 6 — Write complete build steps ## Write Complete Build Steps ### Step 1: Gather Tools and Components - **Tools Needed**: Soldering iron, wire strippers, diagonal cutters, screwdrivers (Phillips and flat-head), multimeter. - **Components**: - Arduino UNO R3 - 5V 4 Channel Relay Module x 4 - Nozzles x 30 - Small Plastic Flexible Hose - Water Tap - Timer or Sensor-based System (e.g., T2310 Time Controller) - **Safety Notes**: Ensure all components are clean and dry before soldering. Use a multimeter to check for continuity and ensure no shorts. ### Step 2: Prepare the Arduino UNO R3 - **Action**: Install the Arduino IDE on your computer. - **Verification Test**: Open the Arduino IDE, create a new sketch, upload a simple \"blink\" program, and verify it works by observing the onboard LED blinking. ### Step 3: Connect Relay Modules to Arduino - **Tools Needed**: Soldering iron, wire strippers, diagonal cutters. - **Action**: - Solder wires from each relay module’s IN1-IN4 pins to corresponding",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "Automatic Water Gardening/Build Plan.md::chunk_1",
+            "source": "obsidian"
+          },
+          {
+            "id": 278,
+            "timestamp": "2026-05-18 09:49:33",
+            "title": "Build Plan",
+            "content": "IDE, create a new sketch, upload a simple \"blink\" program, and verify it works by observing the onboard LED blinking. ### Step 3: Connect Relay Modules to Arduino - **Tools Needed**: Soldering iron, wire strippers, diagonal cutters. - **Action**: - Solder wires from each relay module’s IN1-IN4 pins to corresponding GPIO pins on the Arduino (e.g., GPIO0-GPIO5). - Power the relays using a 5V power supply (not directly from the Arduino) and connect them to the VCC and GND pins. - **Verification Test**: Use the Serial Monitor in the Arduino IDE to send commands to each relay module. Confirm that they respond correctly. ### Step 4: Install Nozzles on Water Hose - **Action**: - Cut the flexible hose into sections, ensuring each section can accommodate one nozzle. - Attach nozzles to the ends of the hose sections using appropriate connectors or tape. - **Verification Test**: Manually test the water flow from each nozzle. Ensure a consistent spray pattern and sufficient coverage. ### Step 5: Connect Nozzles to Relays - **Tools Needed**: Soldering iron, wire strippers, diagonal cutters. - **Action**: - Solder wires from each nozzle’s trigger pin (usually labeled as IN1) to the corresponding relay module’s OUT1-OUT4 pins. - **Verification Test**: Use the Serial Monitor in the Arduino IDE to send commands to each relay module. Confirm that water flow is controlled by relays. ### Step 6: Set Up Water Source - **Action**: - Connect one end of the flexible hose to a water tap and secure it with clamps or ties. - Ensure the other end of the hose reaches all plants efficiently, considering the placement of nozzles. - **Verification Test**: Turn on the water source and observe if water flows through each nozzle. Adjust as necessary. ### Step 7: Install Timer or Sensor-Based System - **Action**: - Connect the timer or sensor-based system to the Arduino UNO R3 according to its documentation. - **Verification Test**: Program the Arduino code to integrate with the timer/sensor and test it by manually triggering the watering cycle. ### Step 8: Write and Upload Arduino Code - **Action**: - Open a new sketch in the Arduino IDE and write the necessary code to control relays based on time or sensor inputs. - Compile and upload the code to the Arduino UNO R3 using a USB cable. - **Verification Test**: Ensure the Arduino code runs without errors. Test by manually triggering different watering cycles.",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "Automatic Water Gardening/Build Plan.md::chunk_2",
+            "source": "obsidian"
+          },
+          {
+            "id": 279,
+            "timestamp": "2026-05-18 09:49:33",
+            "title": "Build Plan",
+            "content": "in the Arduino IDE and write the necessary code to control relays based on time or sensor inputs. - Compile and upload the code to the Arduino UNO R3 using a USB cable. - **Verification Test**: Ensure the Arduino code runs without errors. Test by manually triggering different watering cycles. ### Step 9: Final Testing - **Action**: - Manually run through all programmed watering cycles, ensuring each nozzle activates correctly and water flows as expected. - **Verification Test**: Observe the system for a few hours to ensure it operates smoothly and efficiently without any leaks or malfunctions. Adjust as needed. ### Step 10: Documentation - **Action**: - Document the build process, including any modifications made during assembly. - Save notes on the Arduino code used and any troubleshooting steps taken. - **Verification Test**: Review all documentation to ensure completeness and accuracy for future reference or maintenance.",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "Automatic Water Gardening/Build Plan.md::chunk_3",
+            "source": "obsidian"
+          },
+          {
+            "id": 275,
+            "timestamp": "2026-05-18 09:16:02",
+            "title": "2026-05-18-second-brain-loop-development-progress",
+            "content": "## Second Brain Loop Development Progress **Signal:** This week, the focus was on refining core system functionalities of the Elvis Second Brain project without integrating new features. **Evidence:** - 2026-05-14 [git/elvis/23ea1cd752e6166f47c3163e7511a175eb9aa542] second brain loop v1: second brain loop v1 - 2026-05-14 [git/elvis/e42f320ec65b288d1a8f57af2b1513c1776a8f5e] second brain v2 loop: second brain v2 loop - 2026-05-17 [git/elvis/cd962ffff2298d39d60e4f5ab6d0a639ccc8ba3f] second brain v3: second brain v3 **Historical context:** - Previous iterations of the Second Brain project include versions 1 and 2, which laid foundational work for current refinements. - The core system development has been ongoing since early May, focusing on embedding models and data integration. **Suggested next action:** Pun should review the performance metrics of second brain v3 to identify any remaining bugs or areas needing further refinement.",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "elvis-surfaced/2026-05-18-second-brain-loop-development-progress.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 268,
+            "timestamp": "2026-05-18 09:11:52",
+            "title": "2026-05-18-helmet-detection-system-inquiry",
+            "content": "## Helmet Detection System Inquiry **Signal:** Pun inquired about the availability of helmet detection systems near a specific area. **Evidence:** - 2026-05-14 [todo/todolist.md::L3] ถามเรื่องมี main มั้ยแถวนั้น helmet detection: ถามเรื่องมี main มั้ยแถวนั้น helmet detection **Historical context:** - Pun has been working on setting up a standalone outdoor helmet detection unit with camera and cellular connectivity, focusing on physical assembly and power supply. - Historical records show that Pun was previously focused on developing the helmet detection system in nearby areas. **Suggested next action:** Follow up with local suppliers or manufacturers to confirm availability of suitable helmet detection systems near the specified area. **Build plan:** [[2026-05-18-helmet-detection-system-inquiry-build-plan]]",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "elvis-surfaced/2026-05-18-helmet-detection-system-inquiry.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 263,
+            "timestamp": "2026-05-18 08:35:42",
+            "title": "20 - Further Programming",
+            "content": "### Features of OOP **Polymorphism** - when methods of same name redefined and behave differently **Inheritance** - allows child class to inherit properties from a parent class - super() keyword **Encapsulation** - restrict external access to data",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "A-level/CS/20 - Further Programming.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 255,
+            "timestamp": "2026-05-18 08:26:58",
+            "title": "Balcony Layout",
+            "content": "20x6 tiles tiles 30x30cm each balcony : 600cm x 180cm = 6m x 1.8m",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "Automatic Water Gardening/Balcony Layout.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 250,
+            "timestamp": "2026-05-18 00:00:39",
+            "title": "2026-05-17-automatic-water-gardening-build-plan",
+            "content": "## Step 1 — Identify requirements ## Identification of Requirements ### Owned Components - **Small plastic flexible hose**: ~5m long, can be cut into sections. - **30 nozzles**: Small spray radius (<30cm). - **Arduino UNO R3**. ### Physical Constraints - **Balcony Garden Dimensions**: 2x5 meters (10 square meters). - **Plant Arrangement**: Pots are lined around the walls with space to walk in the middle. - **Environmental Conditions**: Hot temperature and high sunlight, requiring more frequent watering. - **Budget Limit**: Less than 500 THB. ### Missing / TBD - Determine the exact number of nozzles needed and their placement. - Decide on a method for controlling water flow to each nozzle (plastic hose connected to a water tap with sufficient supply, nozzles inserted along the hose). - Plan how to position the hose to reach all plants efficiently. - Consider adding a timer or sensor-based system for automatic watering. These requirements will be used as a foundation for the subsequent tasks. --- ## Step 2 — Identify hardware options Based on the search results, here are some candidate parts for controlling water flow to each nozzle in your Automatic Water Gardening project: ### 1. **Valves** - These control the water flow to different irrigation zones. - Each watering zone can have its own valve, providing precise control over the amount of water delivered. - Example: [DIG Corp Manual Flow Control Mechanism](https://www.digcorp.com/the-manual-flow-control-mechanism/) ### 2. **Irrigation Controllers (Sprinkler Systems)** - Control valves regulate the flow of water to different parts of the landscape, allowing for separate watering of plants with varying needs. - Example: [CT Section AWWA](https://ctawwa.org/Irrigation_Controllers__Sprinkler_Systems/) ### 3. **Automatic Shut-Off Valves Volumetric** - These mechanical shut-off mechanisms control the valve On/Off actions and enable volumetric control over irrigation systems. - Example: [Irrigationglobal.com](https://www.irrigationglobal.com/contents/en-us/d282_volumetric_automatic_valves.html) ### 4. **Automatic Water Valve** - Explore automatic water management solutions like timers, smart monitors, and float valves designed for efficiency and convenience. - Example: [Amazon.com Automatic Water Valves](https://www.amazon.com/automatic-water-valve/s?k=automatic+water+valve) ### 5. **Water Flow Control Devices** - These are used to regulate fluid movement through pipes and channels using specialized valves. - Example: [FDE Hydro Mastering Your Mains Guide](https://fdehydro.com/mastering-your-mains-a-guide-to-water-flow-control-devices/) These components can help you manage the water flow more precisely, ensuring that each nozzle receives the appropriate amount of water. You may want to review these options and decide which ones best fit your project's needs. Would you like to search for specific parts or compare prices on Lazada as part",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "elvis-surfaced/2026-05-17-automatic-water-gardening-build-plan.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 251,
+            "timestamp": "2026-05-18 00:00:39",
+            "title": "2026-05-17-automatic-water-gardening-build-plan",
+            "content": "can help you manage the water flow more precisely, ensuring that each nozzle receives the appropriate amount of water. You may want to review these options and decide which ones best fit your project's needs. Would you like to search for specific parts or compare prices on Lazada as part of task 3? --- ## Step 3 — Compare hardware prices | Component | Option | Price (THB) | Source | Link | | ------------------------- | -------------------------------------- | ----------- | ---------------------- | ------------------------------------------------------------------------------------- | | Valves | DIG Corp Manual Flow Control Mechanism | Not found | Lazada - Not available | https://www.digcorp.com/the-manual-flow-control-mechanism/ | | | | | Web Search | https://www.lazada.com.ph/tag/manual-flow-control-valve/ | | Irrigation Controllers | CT Section AWWA | Not found | Lazada - Not available | https://ctawwa.org/Irrigation_Controllers__Sprinkler_Systems/ | | | | | Web Search | https://www.lazada.com.ph/tag/sprinkler-system-with-controller/ | | Automatic Shut-Off Valves | Volumetric | Not found | Lazada - Not available | https://www.irrigationglobal.com/contents/en-us/d282_volumetric_automatic_valves.html | | | | | Web Search | https://www.lazada.com.ph/tag/automatic-water-valve/ | | Water Flow Control | Manual Flow Control Valve | ₱784.00 | Lazada | https://www.lazada.com.ph/tag/flow-control-valve/ | --- ## Step 4 — Draft circuit / wiring diagram ``` graph TB A[Arduino UNO R3] -- PWR --> B(5V Power Rail) A -- GND --> C(Ground Rail) D[Water Flow Control Mechanism] -- Signal --> E[GPIO Pin 2] F[Nozzle 1] -- Water Flow --> D G[Nozzle 2] -- Water Flow --> D H[5m Plastic Hose] -- Connects --> D I[Plant Pot 1] -- Nozzle --> F J[Plant Pot 2] -- Nozzle --> G K[Water Tap] -- Water Source --> H L[Timer/Sensor (Optional)] -- Signal --> A[GPIO Pin 3] ``` --- ## Step 5 — Sanity check Based on the web search results, here are some water flow control mechanisms and their approximate prices: - **Dole Flow Regulator 1\" FNPT 10.00 GPM GX10 (DV100-1)**: $111.88 USD. - **Electronic Water Flow Controller - Pearl Best Control X- PCBX Models**: $429.00 to $549.00 USD. - **Flow Control Valves - Surplus Center**: Prices vary based on the model, with some starting at around $50.49 USD. - **Water Flow Regulators - PlumbingSupply.com**: Dole 3/4\" FIPS Brass Flow Regulators ranging from $50.49 to $51.95 USD. The total budget for the Automatic Water Gardening project is less than 500 THB, so we need to ensure that all components fit within this budget. Given the prices of these flow control mechanisms, it looks like some options",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "elvis-surfaced/2026-05-17-automatic-water-gardening-build-plan.md::chunk_1",
+            "source": "obsidian"
+          },
+          {
+            "id": 252,
+            "timestamp": "2026-05-18 00:00:39",
+            "title": "2026-05-17-automatic-water-gardening-build-plan",
+            "content": "3/4\" FIPS Brass Flow Regulators ranging from $50.49 to $51.95 USD. The total budget for the Automatic Water Gardening project is less than 500 THB, so we need to ensure that all components fit within this budget. Given the prices of these flow control mechanisms, it looks like some options might exceed our budget. For example: - The Dole Flow Regulator and the Electronic Water Flow Controller are significantly above the budget limit. - Some Surplus Center valves fall just below or slightly over the budget. ### Budget Overrun: 1. **Dole Flow Regulator 1\" FNPT 10.00 GPM GX10 (DV100-1)**: $111.88 USD is not within our budget. 2. **Electronic Water Flow Controller - Pearl Best Control X- PCBX Models**: The range of prices ($429 to $549) exceeds the budget. ### Recommendations: - Consider cheaper alternatives like the Dole 3/4\" FIPS Brass Flow Regulators, which are closer to our budget but still need verification. - Explore local markets or alternative suppliers for better pricing. - Evaluate if a simpler system with fewer nozzles is feasible within the given budget. Let's proceed by confirming the prices of the cheaper options and checking if they can be sourced locally. --- ## Step 6 — Write complete build steps ## Step-by-Step Build Guide for Automatic Water Gardening System ### Tools and Components Needed: 1. Arduino UNO R3 2. 5m Plastic Hose (connected to a water tap) 3. Nozzles (inserted along the hose, small spray radius < 30cm) 4. Water Flow Control Mechanism (e.g., manual valves or simple flow regulators) 5. Timer/Sensor for Automation (optional but recommended for efficiency and convenience) ### Safety Notes: - Ensure all electrical components are properly insulated to avoid short circuits. - Use appropriate connectors when joining the plastic hose to ensure no leaks. ### Step 1: Set Up the Workplace - Prepare a clean, organized workspace where you can lay out your components. - Gather all tools needed for assembly and wiring (screwdrivers, pliers, etc.). ### Step 2: Wiring Everything Together - Connect the water flow control mechanism to the plastic hose. Ensure it is securely attached. - Insert nozzles at regular intervals along the hose to ensure even distribution of water. - Route the hose through your garden, connecting it to the nearest available tap. ### Step 3: The Code (Arduino Sketch) ```cpp const int valvePin = 2; // Pin connected to the water flow control mechanism void setup()",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "elvis-surfaced/2026-05-17-automatic-water-gardening-build-plan.md::chunk_2",
+            "source": "obsidian"
+          },
+          {
+            "id": 253,
+            "timestamp": "2026-05-18 00:00:39",
+            "title": "2026-05-17-automatic-water-gardening-build-plan",
+            "content": "at regular intervals along the hose to ensure even distribution of water. - Route the hose through your garden, connecting it to the nearest available tap. ### Step 3: The Code (Arduino Sketch) ```cpp const int valvePin = 2; // Pin connected to the water flow control mechanism void setup() { pinMode(valvePin, OUTPUT); } void loop() { digitalWrite(valvePin, HIGH); // Open the valve (replace with your logic) delay(30000); // Water for 30 seconds digitalWrite(valvePin, LOW); // Close the valve delay(600000); // Wait for 10 minutes before next cycle } ``` - Upload this sketch to your Arduino UNO R3. ### Step 4: Putting It Together - Assemble all components as per the wiring diagram created earlier. - Ensure everything is properly connected and tested for leaks. - Place the Arduino UNO R3 in a waterproof enclosure if necessary, or mount it securely on a stand. ### Step 5: The Finished Product - Test the system by running water through it manually first to check for any issues. - Set up your timer/sensor (if using) and program it according to your watering schedule. - Monitor the system’s performance over time to ensure it meets your needs efficiently. --- ### Verification Tests: 1. Leak Check: Ensure no leaks at joints or connections. 2. Water Flow Test: Manually activate the water flow mechanism to verify proper operation. 3. Automation Test: If using a timer/sensor, test its functionality by setting specific intervals for watering.",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "elvis-surfaced/2026-05-17-automatic-water-gardening-build-plan.md::chunk_3",
+            "source": "obsidian"
+          },
+          {
+            "id": 244,
+            "timestamp": "2026-05-17T16:57:15+07:00",
+            "title": "bug fixes",
+            "content": "bug fixes",
+            "author": "punmyidol <159275509+punmyidol@users.noreply.github.com>",
+            "meta": null,
+            "source_ref": "git/elvis/980f2bd0de5165f0e166e800a543d701cb3cb871",
+            "source": "git"
+          },
+          {
+            "id": 243,
+            "timestamp": "2026-05-17T12:02:27+07:00",
+            "title": "second brain v3",
+            "content": "second brain v3",
+            "author": "punmyidol <159275509+punmyidol@users.noreply.github.com>",
+            "meta": null,
+            "source_ref": "git/elvis/cd962ffff2298d39d60e4f5ab6d0a639ccc8ba3f",
+            "source": "git"
+          },
+          {
+            "id": 249,
+            "timestamp": "2026-05-17 22:52:07",
+            "title": "Requirements",
+            "content": "# Goals - Create an automatic watering system for a 2x5 meter balcony garden with high sunlight and hot temperatures. - Ensure all 20-30 potted plants (each pot <30cm diameter) are watered sufficiently. - Pots are lined around the walls of the balcony with space to walk in the middle - Use existing components: small plastic flexible hose (~5m long), Arduino UNO R3, and 15-20 nozzles with a small spray radius (<30cm). # Owned Components - Small plastic flexible hose (can be cut into sections) - 30 nozzles - Arduino UNO R3 # Missing / TBD - Determine the exact number of nozzles needed and their placement. **Clarified:** Around 30 nozzles. - Decide on a method for controlling water flow to each nozzle. **Clarification:** The plastic hose is connected to a water tap with sufficient water supply, and nozzles are inserted along the hose. - Plan how to position the hose to reach all plants efficiently. - Consider adding a timer or sensor-based system for automatic watering. # Constraints - Nozzles have small spray radius (<30cm), so they can only water one pot at a time unless positioned between pots. - Hot temperature and high sunlight may require more frequent watering. - Limited space on the balcony garden (2x5 meters). # Budget **Clarification:** Less than 500 THB",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "Automatic Water Gardening/Requirements.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 248,
+            "timestamp": "2026-05-17 21:25:17",
+            "title": "2026-05-17",
+            "content": "# Sunday, 17 May 2026 ## 🎯 Top 3 Today - [ ] make sure whole helmet loop works - [x] make the second brain loop lazada-first for finding product prices - [ ] --- ## 📝 Log _Running notes throughout the day_ - chat with elvis about the build plan it created - optimize automatic plant watering - elvis should be able to chat with user instead of just intake - elvis outputs a series of flagged concerns right there for user to answer (creates clear requirements list: same as 1st step of second brain) - then writes to obsidian - **similar to CLAUDE.md file for user preferences like \"Pun likes product comparison lists etc.\"** - elvis also need to be able to make new folder in obsidian to put project files ONLY when 'create project' in the chat tab of tsx ui - tell p mo close to lazada sale date send shopping list - need to send garden layout when idea dump --- ## 🌙 End of Day **Carried over:** - [ ] **One thing to remember:** **Energy / mood:** /10",
+            "author": null,
+            "meta": "{\"tags\": [\"daily\", \"ideas\"]}",
+            "source_ref": "dailies/2026-05-17.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 246,
+            "timestamp": "2026-05-17 20:58:28",
+            "title": "Ideas",
+            "content": "make new skeletons for different types of project _is_build_plan may reject non-hardware projects — if Pun starts a project like \"Plan Thailand trip\" or \"Uni application tracker\", _is_build_plan returns False and the build plan pipeline doesn't run at all. The intake flow writes Requirements.md but nothing happens afterward. **2. todo-module** - reads Obsidian + iCloud calendar - generates morning day plan - learns productive hours over time - runs every morning via scheduler **3. maps-module** - current location awareness - nearby places (restaurants etc.) - ratings + recommendations - Google Maps Platform (already decided) **4. notification-module** - reads notifications aloud via `say` - short-form only (\"your order is here\") - triggered by system events or Elvis **5. learning-module** - preferred response styles from feedback - mistake tracking - fine-tuning Qwen weights (RLHF) — heavy, needs separate planning **6. Code execution (bash tool)** - swap to `qwen2.5-coder:7b` for code tasks - generate → ruff lint → execute → debug loop (3-5 retries) - fallback to `ydata-profiling` premade scripts - Elvis can write/run Python for data manipulation elvis is gonna have a lot of data it should know how to write python to do manipulation, analysis etc. run terminal using a bash tool 1. Generate — Qwen2.5-Coder 7B (swap from base, better for code) 2. Lint — run ruff on output before execution, cheap first filter 3. Execute — run the code, capture stdout + stderr 4. Debug loop — if it fails, feed stderr back to model with full context, retry up to 3-5 times 5. Fallback — if still broken after max retries, either: *maybe use premade scripts instead* ydata-profiling (pandas) make elvis versatile to ever- changing tasks screen time data watch my screen ### Ask thoughtful questions with data from obsidian or sum --- build shopping-module ✅ - finds tailored items that i wanna buy from actually viable shops - use only lazada shopee etc. - if really cannot find then have to do shipping - based on geographic location - comparison of pricing and recommendations fix obsidian-module to use built-in smart connections instead of regex ✅ build calendar-module ✅ - when tool calling call with a time window to fetch events from - maybe time window param {days} - returns events from icloud as json - CRUD events but need to ask permission each time - { \"newEvents\": [ { \"calendarId\": \"5C822B69-D9BB-47D9-A633-C5BF9B5A9F29\", \"title\": \"Claude Meeting\", \"startTime\": \"2026-04-22T11:00:00+0700\", \"endTime\":",
+            "author": null,
+            "meta": "{\"tags\": [\"project\", \"ideas\"]}",
+            "source_ref": "Elvis/Ideas.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 247,
+            "timestamp": "2026-05-17 20:58:28",
+            "title": "Ideas",
+            "content": "✅ - when tool calling call with a time window to fetch events from - maybe time window param {days} - returns events from icloud as json - CRUD events but need to ask permission each time - { \"newEvents\": [ { \"calendarId\": \"5C822B69-D9BB-47D9-A633-C5BF9B5A9F29\", \"title\": \"Claude Meeting\", \"startTime\": \"2026-04-22T11:00:00+0700\", \"endTime\": \"2026-04-22T12:00:00+0700\" } ] } **1. document-module** _(next — other modules deposit data here)_ - XLSX-based tabulation - invoice workflow (PDF → row) - works as the data sink for shopping-module - no manual copy-paste for links/prices - no embeddings",
+            "author": null,
+            "meta": "{\"tags\": [\"project\", \"ideas\"]}",
+            "source_ref": "Elvis/Ideas.md::chunk_1",
+            "source": "obsidian"
+          },
+          {
+            "id": 230,
+            "timestamp": "2026-05-17 10:59:22",
+            "title": "2026-05-17-second-brain-loop-development-progress",
+            "content": "## Second Brain Loop Development Progress **Signal:** This week, the focus was on refining core system functionalities of the Elvis Second Brain project without integrating new features. **Evidence:** - 2026-05-14 [git/elvis/23ea1cd752e6166f47c3163e7511a175eb9aa542] second brain loop v1: second brain loop v1 - 2026-05-14 [git/elvis/e42f320ec65b288d1a8f57af2b1513c1776a8f5e] second brain v2 loop: second brain v2 loop - 2026-05-14 [Elvis/Concept Notes - Second brain.md::chunk_0] Concept Notes - Second brain: Be my second brain when my brain isnt thinking with data from obsidian helps identify weak areas with notes from goodnotes needs more data for neural net ## data - calendar, obsidian vault, todos, goo - 2026-05-14 [elvis-surfaced/2026-05-14-elvis-second-brain-core-system-development.md::chunk_0] 2026-05-14-elvis-second-brain-core-system-development: ## Elvis Second Brain Core System Development **Signal:** This week, the focus was on refining core system functionalities of the Elvis Second Brain project without integrating new features. **Evidenc **Historical context:** - [git] second brain v2 loop - [obsidian] summaries include_monthly=True # pull all monthly summaries ) -> dict: ``` Always inject: - Last 7 days raw (recent signals, no retrieval needed) - Top k retrieved chunks from weekly/monthly embedding **Suggested next action:** Review and finalize the ingestion logic for multiple data sources in preparation for UI updates.",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "elvis-surfaced/2026-05-17-second-brain-loop-development-progress.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 227,
+            "timestamp": "2026-05-17 10:56:12",
+            "title": "2026-05-17-us-visa-application-form-started",
+            "content": "## US Visa Application Form Started **Signal:** Pun started the process of filling out the US visa application form on the embassy website. **Evidence:** - \"do US visa application form on embassy website\" [todo/todolist.md::L4] - \"- [ ] do US visa application form on embassy website\" [todolist.md::chunk_0] **Historical context:** - Pun has previously noted in their to-do list the need to start the US visa application process. **Suggested next action:** Complete and submit the US visa application form.",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "elvis-surfaced/2026-05-17-us-visa-application-form-started.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 224,
+            "timestamp": "2026-05-17 09:27:44",
+            "title": "2026-05-17-helmet-detection-system-setup",
+            "content": "## Helmet Detection System Setup **Signal:** Pun is working on setting up a standalone outdoor helmet detection unit with camera and cellular connectivity, focusing on physical assembly and power supply. **Evidence:** - 2026-05-14 [elvis-surfaced/2026-05-14-helmet-detection-system-setup-2124-build-plan.md::chunk_3] 1. Assemble the remaining parts of the enclosure, ensuring everything is properly secured. - 2026-05-15 [elvis-surfaced/2026-05-15-helmet-detection-system-setup-2041-build-plan.md::chunk_2] check labels. - Verification Test: None (proceed directly to step 2). 2. Install a multimeter and other necessary tools for testing connections and verifying power supply. **Historical context:** - [obsidian] ## Step 1 — Identify requirements It seems the query I used was too broad. Let's try focusing on your helmet detection system project specifically. - [todo] ถามเรื่องมี main มั้ยแถวนั้น helmet detection **Suggested next action:** Pun should connect all external power sources (solar panel and battery) to the power supply unit and verify the connections using a multimeter. **Build plan:** [[2026-05-17-helmet-detection-system-setup-build-plan]]",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "elvis-surfaced/2026-05-17-helmet-detection-system-setup.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 220,
+            "timestamp": "2026-05-17 09:17:13",
+            "title": "Dosage",
+            "content": "### [[Tea Recipes#Floral Rise|Floral Rise]] |Compound|Health Effects|mg/serving| |---|---|---| |Polysaccharides|Immune support, anti-fatigue, adaptogenic, gut health, moisturising|42| |Hesperidin|Cardiovascular support, anti-inflammatory, antioxidant, vascular tone|4| |Gingerols|Anti-inflammatory, antioxidant, digestive support, nausea relief|2.7| |Shogaols|Anti-inflammatory, neuroprotective, antioxidant|0.825| |Limonene|Antioxidant, mood-lifting, digestive support, antimicrobial|0.66| |Linalool|Calming, anxiolytic, sedative, antimicrobial, anti-inflammatory|0.42| |Citral|Antimicrobial, anti-inflammatory, mood-lifting, analgesic|0.4| |Nobiletin|Anti-inflammatory, metabolic support, neuroprotective, brightening|0.375| |Benzyl Acetate|Calming, antimicrobial, mild analgesic|0.375| |Chlorophyll|Antioxidant, detoxifying, wound-healing support|0.24| |Geraniol|Antimicrobial, anti-inflammatory, antioxidant, skin-soothing|0.2| |Citronellal|Calming, antimicrobial, antispasmodic, insect-repelling|0.16| |β-Ionone|Antioxidant, anti-tumour, mood-uplifting|0.06| ### [[Tea Recipes#Deep Sleep|Deep Sleep]] | Compound | Health Effects | mg/serving | | ---------------- | ----------------------------------------------------------------------------- | ---------- | | Polysaccharides | Immune support, anti-fatigue, adaptogenic, gut health, moisturising | 73.2 | | Rosmarinic Acid | Anxiolytic, antioxidant, anti-inflammatory, GABA modulation | 3.9 | | Chlorogenic Acid | Antioxidant, blood-sugar support, anti-inflammatory, liver protection | 3 | | Ophiopogonin | Immune support, anti-inflammatory, lung-nourishing, sleep support, anti-aging | 1.2 | | Apigenin | Sleep-promoting, anxiolytic, anti-inflammatory, GABA-A receptor agonist | 0.9 | | Luteolin | Anti-inflammatory, antioxidant, neuroprotective, anti-allergic | 0.6 | | Bisabolol | Anti-inflammatory, skin-soothing, calming, mild sedative | 0.24 | | Chlorophyll | Antioxidant, detoxifying, wound-healing support | 0.24 | | Gallic Acid | Antioxidant, antimicrobial, anti-inflammatory, skin-brightening | 0.24 | | Acacetin | Sedative, anti-inflammatory, antioxidant, cardioprotective | 0.225 | | Quercetin | Antioxidant, anti-inflammatory, cardiovascular support, anti-aging | 0.16 | | Limonene | Antioxidant, mood-lifting, digestive support, antimicrobial | 0.1 | | Kaempferol | Antioxidant, anti-cancer, anti-inflammatory, collagen protection | 0.087 | | Citronellal | Calming, antimicrobial, antispasmodic, insect-repelling | 0.08 | | Linalool | Calming, anxiolytic, sedative, antimicrobial, anti-inflammatory | 0.06 | | Chamazulene | Anti-inflammatory, antioxidant, antispasmodic | 0.045 | | Geraniol | Antimicrobial, anti-inflammatory, antioxidant, skin-soothing | 0.02 | ### [[Tea Recipes#Daily Radiance|Daily Radiance]] |Compound|Health Effects|mg/serving| |---|---|---| |Polysaccharides|Immune support, anti-fatigue, adaptogenic, gut health, moisturising|25.2| |Anthocyanins|Antioxidant, anti-inflammatory, cardiovascular support, skin anti-aging|16.4| |Hibiscus Acid|Blood pressure support, antioxidant, digestive support|8.4| |Hesperidin|Cardiovascular support, anti-inflammatory, antioxidant, vascular tone|3.2| |Gallic Acid|Antioxidant, antimicrobial, anti-inflammatory, skin-brightening|2.4| |Quercetin|Antioxidant, anti-inflammatory, cardiovascular support, anti-aging|1.6| |Vitamin C|Immune support, collagen synthesis, antioxidant, skin brightening|1.2| |Chlorogenic Acid|Antioxidant, blood-sugar support, anti-inflammatory, liver protection|1.2| |Kaempferol|Antioxidant, anti-cancer, anti-inflammatory, collagen protection|0.875| |Ternatin|Antioxidant, anti-glycation, pigment-balancing|0.45| |Limonene|Antioxidant, mood-lifting, digestive support, antimicrobial|0.32| |Nobiletin|Anti-inflammatory, metabolic support, neuroprotective, brightening|0.3| |Geraniol|Antimicrobial, anti-inflammatory, antioxidant, skin-soothing|0.2| |Luteolin|Anti-inflammatory, antioxidant, neuroprotective, anti-allergic|0.04|",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "Mom's Herbal Tea Project/Dosage.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 241,
+            "timestamp": "2026-05-17 09:10:44",
+            "title": "2026-05-12",
+            "content": "# Tuesday, 12 May 2026 ## 🎯 Top 3 Today - [x] connect speaker, 30W amp - [x] second brain v1 loop - [ ] --- ## 📝 Log _Running notes throughout the day_ - weekly summarizer - todo weekly summary unnecessarily complicated? - weekly summaries for gmail and goodnotes exist but havent been created idk why - castle 23x45 - rolling window for weekly summaries? - weekly summaries for gmail, todo, obsidian, calendar works good - second brain loop produces surfaced notes - loop hallucinates and tries to tie unrelated topics together - retrievals are too random --- ## 🌙 End of Day **Carried over:** - [ ] **One thing to remember:** **Energy / mood:** /10",
+            "author": null,
+            "meta": "{\"tags\": [\"daily\", \"ideas\"]}",
+            "source_ref": "dailies/2026-05-12.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 217,
+            "timestamp": "2026-05-16T19:22:51+07:00",
+            "title": "changed embedding model to bgai",
+            "content": "changed embedding model to bgai",
+            "author": "punmyidol <159275509+punmyidol@users.noreply.github.com>",
+            "meta": null,
+            "source_ref": "git/elvis/5f56a652b3e9f50fc5f871c1c232b46694809441",
+            "source": "git"
+          },
+          {
+            "id": 219,
+            "timestamp": "2026-05-16 20:08:01",
+            "title": "2026-05-16",
+            "content": "# Saturday, 16 May 2026 ## 🎯 Top 3 Today - [ ] make sure whole helmet loop works - [x] put comsci notes in obsidian - [ ] --- ## 📝 Log _Running notes throughout the day_ - login line acc - find how much antioxidant in one gram of chrysanthemum - want to know how much effect does antioxidant have in each herbal tea recipe - buy usb-a to female adapter - buy aux cable - buy sim card --- ## 🌙 End of Day **Carried over:** - [ ] usb lte dongle fix tried APN fix - [ ] http://192.168.100.1 login for dongle - [ ] **One thing to remember:** **Energy / mood:** /10",
+            "author": null,
+            "meta": "{\"tags\": [\"daily\", \"ideas\"]}",
+            "source_ref": "dailies/2026-05-16.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 210,
+            "timestamp": "2026-05-16 19:00:20",
+            "title": "19 - Computational Thinking",
+            "content": "### Recursion - must call itself - must have base case - must change state and move towards base case **Stacks + Recursion** - uses [[19 - Computational Thinking#ADTs|Stacks]] to store data in LIFO - each time recursive algorithm calls itself data is pushed onto stack - once recursive algorithm reaches its base case stack unwinds - data popped from stack in reverse order --- ### ADTs **Stacks** **Queues** **Linked List* ---",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "A-level/CS/19 - Computational Thinking.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 170,
+            "timestamp": "2026-05-16 10:27:16",
+            "title": "2026-05-16-helmet-detection-system-setup",
+            "content": "## Helmet Detection System Setup **Signal:** Pun is working on setting up a standalone outdoor helmet detection unit with camera and cellular connectivity, focusing on physical assembly and power supply integration. **Evidence:** - 2026-05-14 [elvis-surfaced/2026-05-14-helmet-detection-system-setup-2124-build-plan.md::chunk_3] 1. Assemble the remaining parts of the enclosure, ensuring everything is properly secured. 2. Connect all external power sources (solar panel and battery) to the power supply unit. - 2026-05-15 [elvis-surfaced/2026-05-15-helmet-detection-system-setup-2041-build-plan.md::chunk_4] by running a full detection scenario to ensure all components are functioning correctly and in sync. **Historical context:** - Pun previously asked about the availability of mains power near the installation site for the helmet detection system. - Detailed build plans have been organized, including physical constraints and environmental considerations. **Suggested next action:** Test the assembled unit by running a full detection scenario to ensure all components are functioning correctly.",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "elvis-surfaced/2026-05-16-helmet-detection-system-setup.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 3,
+            "timestamp": "2026-05-16 10:00:17",
+            "title": "Tags",
+            "content": "UM ID (University of Michigan) = 84910442 Chaewon2026! - PrinceCanute A-level Candidate Number = 0231",
+            "author": null,
+            "meta": "{\"tags\": [\"assignment\", \"screenshot\", \"CS\", \"code\", \"puremath\", \"furmath\", \"physics\", \"project\", \"elviswrites\", \"ideas\", \"notes\"]}",
+            "source_ref": "Tags.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 67,
+            "timestamp": "2026-05-15 23:15:21",
+            "title": "2026-05-15",
+            "content": "# Friday, 15 May 2026 ## 🎯 Top 3 Today - [x] pure math exam - [ ] - [ ] --- ## 📝 Log _Running notes throughout the day_ - maybe change embedding model tmr to same as obsidian plugin --- ## 🌙 End of Day **Carried over:** - [ ] **One thing to remember:** **Energy / mood:** /10",
+            "author": null,
+            "meta": "{\"tags\": [\"daily\", \"ideas\"]}",
+            "source_ref": "dailies/2026-05-15.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 284,
+            "timestamp": "2026-05-15 20:34:07",
+            "title": "Speaker",
+            "content": "https://www.lazada.co.th/products/pdp-i5685537810-s24248903059.html?c=&channelLpJumpArgs=&clickTrackInfo=query%253ATOA%252Bspeaker%253Bnid%253A5685537810%253Bsrc%253ALazadaMainSrp%253Brn%253A5c7eb4d19b378aba19c2943238c55afa%253Bregion%253Ath%253Bsku%253A5685537810_TH%253Bprice%253A880%253Bclient%253Adesktop%253Bsupplier_id%253A1000055528%253Bsession_id%253A%253Bbiz_source%253Ah5_internal%253Bslot%253A9%253Butlog_bucket_id%253A470687%253Basc_category_id%253A5532%253Bitem_id%253A5685537810%253Bsku_id%253A24248903059%253Bshop_id%253A301335%253BtemplateInfo%253A107882_E%2523-1_A3_C%2523&freeshipping=1&fs_ab=2&fuse_fs=&lang=en&location=Pathum%20Thani&price=8.8E%202&priceCompare=skuId%3A24248903059%3Bsource%3Alazada-search-voucher%3Bsn%3A5c7eb4d19b378aba19c2943238c55afa%3BoriginPrice%3A88000%3BdisplayPrice%3A88000%3BsinglePromotionId%3A-1%3BsingleToolCode%3A-1%3BvoucherPricePlugin%3A0%3Btimestamp%3A1777001613447&ratingscore=5.0&request_id=5c7eb4d19b378aba19c2943238c55afa&review=2&sale=16&search=1&source=search&spm=a2o4m.searchlist.list.9&stock=1 **Directional Horn Speakers (Narrow Dispersion)** The most practical choice. Standard horns have wide ~120° dispersion, but narrow-angle horns exist with **60°, 40°, or even 20° horizontal spread**. Brands like **TOA**, **Bosch**, and **Apart Audio** make horn drivers with selectable dispersion patterns. You'd aim the narrow axis across just the near lane. **Line Array Speakers** Line arrays produce a very controlled vertical pattern with tight horizontal throw. Used in stadiums and large venues precisely _because_ they direct sound to a specific zone and minimize spill. They're overkill for a road setup but extremely effective at lane-level targeting. **Parametric / Ultrasonic Directional Speakers (Audio Spotlight)** The most precise option. Brands like **Holosonics** and **Focusonics** use ultrasonic carrier waves to create a \"beam\" of sound only 2–5° wide — essentially a flashlight of audio. Only people directly in the beam hear it clearly. This is used in museums, retail, and military applications. The downside is higher cost and limited max volume compared to horn systems. **LRAD (Long Range Acoustic Device)** Originally designed for tight-beam broadcast over long distances. The beam angle can be as narrow as **15–30°**, which at close range (a single lane width of ~3.5m) gives very precise control. However, it's expensive and associated with high-SPL deterrent use.",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "Helmet Detection System/Speaker.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 49,
+            "timestamp": "2026-05-15 20:14:27",
+            "title": "2026-05-15-helmet-detection-system-setup",
+            "content": "## Helmet Detection System Setup **Signal:** Pun is actively developing a YOLO-based helmet detection system and planning hardware selection for an outdoor unit. **Evidence:** (none from this week) **Historical context:** - [calendar] Micky BD — Historical note indicating regular calendar entries. - [obsidian] ## Tung Tung Simulator ## Sell Shirt ## — Previous work on unrelated projects. - [todo] ถามเรื่องจะคืนเงินแรกเข้าเมื่อไหร่ — A to-do item from a previous week. **Suggested next action:** Pun should finalize the hardware components and circuit design for the helmet detection system. **Build plan:** [[2026-05-15-helmet-detection-system-setup-build-plan]]",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "elvis-surfaced/2026-05-15-helmet-detection-system-setup.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 124,
+            "timestamp": "2026-05-14T22:11:44+07:00",
+            "title": "second brain v2 loop",
+            "content": "second brain v2 loop",
+            "author": "punmyidol <159275509+punmyidol@users.noreply.github.com>",
+            "meta": null,
+            "source_ref": "git/elvis/e42f320ec65b288d1a8f57af2b1513c1776a8f5e",
+            "source": "git"
+          },
+          {
+            "id": 125,
+            "timestamp": "2026-05-14T14:02:33+07:00",
+            "title": "second brain loop v1",
+            "content": "second brain loop v1",
+            "author": "punmyidol <159275509+punmyidol@users.noreply.github.com>",
+            "meta": null,
+            "source_ref": "git/elvis/23ea1cd752e6166f47c3163e7511a175eb9aa542",
+            "source": "git"
+          },
+          {
+            "id": 61,
+            "timestamp": "2026-05-14 22:16:34",
+            "title": "2026-05-09",
+            "content": "# Saturday, 9 May 2026 ## 🎯 Top 3 Today - [x] work on elvis second brain - [x] tell nathan and p poj about go michigan - [ ] --- ## 📝 Log _Running notes throughout the day_ - fixed unified vector store using parts 1-4 of plan.md - had claude design the /brain page ui with placeholder data - working on ingest git and ingest calendar ## --- ## 🌙 End of Day **Carried over:** - [ ] working on ingest git and ingest calendar **One thing to remember:** **Energy / mood:** /10",
+            "author": null,
+            "meta": "{\"tags\": [\"daily\", \"ideas\"]}",
+            "source_ref": "dailies/2026-05-09.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 56,
+            "timestamp": "2026-05-14 22:12:59",
+            "title": "2026-05-13",
+            "content": "# Wednesday, 13 May 2026 ## 🎯 Top 3 Today - [ ] speaker - [ ] - [ ] --- ## 📝 Log _Running notes throughout the day_ - Screentime api apple? - no api for data - only used for permission - put elvis on hold to work on helmet detection - v3 loop works --- ## 🌙 End of Day **Carried over:** - [x] finish soldering the thing - [ ] สั่ง 3.5mm aux cable - [ ] **One thing to remember:** **Energy / mood:** /10",
+            "author": null,
+            "meta": "{\"tags\": [\"daily\", \"ideas\"]}",
+            "source_ref": "dailies/2026-05-13.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 4,
+            "timestamp": "2026-05-14 22:04:31",
+            "title": "todolist",
+            "content": "- [ ] ถามเรื่องจะคืนเงินแรกเข้าเมื่อไหร่ - [ ] call mahidol lab - [ ] ถามเรื่องมี main มั้ยแถวนั้น helmet detection - [ ] do US visa application form on embassy website",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "todolist.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 87,
+            "timestamp": "2026-05-14 21:15:52",
+            "title": "Concept Notes -  Second brain",
+            "content": "Be my second brain when my brain isnt thinking with data from obsidian helps identify weak areas with notes from goodnotes needs more data for neural net ## data - calendar, obsidian vault, todos, goodnotes - **Git commits** — what you're actually building, not just planning - **Browser history** — what you're reading/researching in real time - **Screen time / active app** — are you in VS Code, YouTube, Claude - **Sleep/HRV** — cognitive state, affects what kind of content to surface embed the [[#data]] into a vector DB. for each type make summary and embed every week ### Second Brain v2 i want a list of action items to be created by elvis and queue tasks with the correct context for elvis to perform sequentially without user interaction. For example: \"Focus on Helmet Detection System Setup\" Obsidian Note I want elvis to create a todolist with potential next steps for the plan (according to elvis's thoughts): 1. identify requirements (these keywords should pop up: 'standalone', 'outdoor', '1m tall', etc.) 2. identify hardware that fits requirements 3. create a table comparing hardware prices with links 4. draw circuit diagrams for connecting components 5. do sanity check to make sure all components fit 6. draw out complete build steps with necessary details elvis needs to be able to create a todolist that mimics my example one as a minimum. execute the tasks on the todo sequentially correctly and output the results in a staging folder",
+            "author": null,
+            "meta": "{\"tags\": [\"secondbrain\"]}",
+            "source_ref": "Elvis/Concept Notes -  Second brain.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 50,
+            "timestamp": "2026-05-14 20:21:28",
+            "title": "2026-05-14-memory-management-system-migration-complete",
+            "content": "## Memory Management System Migration Complete **Signal:** The transition of the MemoryManager system to mem0 with Ollama and ChromaDB integration has been successfully completed. **Evidence:** (none from this week) **Historical context:** - [git] migrated data - [git] changed memory to mem0 **Suggested next action:** Pun should review performance metrics of the new MemoryManager system to ensure stability and efficiency.",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "elvis-surfaced/2026-05-14-memory-management-system-migration-complete.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 45,
+            "timestamp": "2026-05-14 20:14:30",
+            "title": "2026-05-14-elvis-second-brain-core-system-development",
+            "content": "## Elvis Second Brain Core System Development **Signal:** This week, the focus was on refining core system functionalities of the Elvis Second Brain project without integrating new features. **Evidence:** - (none from this week) **Historical context:** - Set up core infrastructure for application, enable PWA features. - Focus on refining technical aspects of the Elvis Second Brain project continued this week. **Suggested next action:** Review and optimize existing system functionalities to ensure stability before considering new feature integration.",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "elvis-surfaced/2026-05-14-elvis-second-brain-core-system-development.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 242,
+            "timestamp": "2026-05-14 20:02:48",
+            "title": "Cron Jobs",
+            "content": "┌─────┬───────────────────────┬─────────────────────────┬──────────┐ │ # │ Job ID │ Schedule (Asia/Bangkok) │ Cadence │ ├─────┼───────────────────────┼─────────────────────────┼──────────┤ │ 1 │ midnight_news_refresh │ 00:00 daily │ cron │ ├─────┼───────────────────────┼─────────────────────────┼──────────┤ │ 2 │ plan_my_day │ 01:00 daily │ cron │ ├─────┼───────────────────────┼─────────────────────────┼──────────┤ │ 3 │ second_brain │ 09:00 daily │ cron │ ├─────┼───────────────────────┼─────────────────────────┼──────────┤ │ 4 │ engagement_checker │ 09:05 daily │ cron │ ├─────┼───────────────────────┼─────────────────────────┼──────────┤ │ 5 │ weekly_summary │ Sun 23:30 │ cron │ ├─────┼───────────────────────┼─────────────────────────┼──────────┤ │ 6 │ calendar_sync │ every 30 min │ interval │ ├─────┼───────────────────────┼─────────────────────────┼──────────┤ │ 7 │ gmail_fetch │ every 30 min │ interval │ ├─────┼───────────────────────┼─────────────────────────┼──────────┤ │ 8 │ obsidian_reindex │ every 30 min │ interval │ ├─────┼───────────────────────┼─────────────────────────┼──────────┤ │ 9 │ git_reindex │ every 30 min │ interval │ └─────┴───────────────────────┴─────────────────────────┴──────────┘",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "Elvis/Cron Jobs.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 47,
+            "timestamp": "2026-05-14 20:02:14",
+            "title": "2026-05-14-university-of-michigan-visa-documents-submission",
+            "content": "## University of Michigan Visa Documents Submission **Signal:** Pun needs to submit the required documents for their student visa at the University of Michigan. **Evidence:** - \"Confirmation of Successful International Documents Upload\" **Historical context:** - \"[ACTION NEEDED] Submit Required Documents for Your Student Visa\" - \"[ACTION NEEDED] Submit the I-20 Request: Visa Status Form\" **Suggested next action:** Pun should review and upload any remaining required documents to avoid admission delays.",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "elvis-surfaced/2026-05-14-university-of-michigan-visa-documents-submission.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 84,
+            "timestamp": "2026-05-14 17:21:21",
+            "title": "Elvis second brain plan",
+            "content": "--- ## 1. SQLite Schema ```sql -- Raw ingested data CREATE TABLE events ( id INTEGER PRIMARY KEY, source TEXT, -- 'obsidian' | 'git' | 'calendar' | 'todo' | 'goodnotes' content TEXT, timestamp DATETIME, embedded INTEGER DEFAULT 0 ); -- Embeddings at all levels CREATE TABLE embeddings ( id INTEGER PRIMARY KEY, source TEXT, -- 'obsidian' | 'git' | 'calendar' | 'todo' level TEXT, -- 'raw' | 'weekly' | 'monthly' period TEXT, -- '2026-W19' | '2026-04' summary TEXT, vector BLOB, -- serialized numpy array created_at DATETIME ); -- What Elvis surfaced + engagement tracking CREATE TABLE surfaced ( id INTEGER PRIMARY KEY, topic TEXT, reason TEXT, source_signals TEXT, -- JSON list obsidian_note_path TEXT, created_at DATETIME, engaged INTEGER DEFAULT 0 -- 0 | 1, updated by engagement checker ); ``` --- ## 2. Ingestion Layer One ingestion function per data source, runs on APScheduler every few hours. ``` ingest_obsidian() → reads vault, diffs against last run, inserts new/edited notes ingest_git() → git log since last run, inserts commits ingest_calendar() → pulls upcoming + recent events ingest_todos() → reads todo state, logs changes ``` All raw data lands in `events` table with `embedded = 0`. --- ## 3. Embedding Pipeline **Raw embedder** — runs hourly: - Queries `events` where `embedded = 0` - Chunks content if needed - Embeds via local model (nomic-embed or similar) - Inserts into `embeddings` with `level = 'raw'` - Marks `events.embedded = 1` **Weekly summarizer** — runs every Sunday or on demand: - For each source type, pulls last 7 days from `events` - qwen2.5:14b call: summarize into delta-focused summary (\"shifted focus from X to Y\") - Embeds summary - Inserts into `embeddings` with `level = 'weekly'`, `period = '2026-W19'` **Monthly summarizer** — runs 1st of month: - For each source type, pulls last 4 weekly summaries - Haiku call: summarize into monthly summary - Embeds summary - Inserts into `embeddings` with `level = 'monthly'`, `period = '2026-04'` --- ## 4. Retrieval Layer ```python def retrieve_context( sources=None, # filter by source type raw_days=7, # how many days of raw events to inject include_weekly=True, # pull all weekly summaries include_monthly=True # pull all monthly summaries ) -> dict: ``` Always inject: - Last 7 days raw (recent signals, no retrieval needed) - Top k retrieved chunks from weekly/monthly embeddings --- ## 5. Second Brain Loop **Runs every 4-6 hours via APScheduler:** ``` 1. Read current signals: - Next",
+            "author": null,
+            "meta": "{\"tags\": [\"ideas\", \"secondbrain\"]}",
+            "source_ref": "Elvis/Elvis second brain plan.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 85,
+            "timestamp": "2026-05-14 17:21:21",
+            "title": "Elvis second brain plan",
+            "content": "summaries include_monthly=True # pull all monthly summaries ) -> dict: ``` Always inject: - Last 7 days raw (recent signals, no retrieval needed) - Top k retrieved chunks from weekly/monthly embeddings --- ## 5. Second Brain Loop **Runs every 4-6 hours via APScheduler:** ``` 1. Read current signals: - Next 48hr calendar events (raw) - Last 7 days activity (weekly) - Open todos (weekly) 2. Retrieve relevant history: - retrieve_context(query=current_signals, top_k=8) 1. qwen2.5:14b call #1 — decide what to surface: prompt: \"Given this context, what 1-3 topics are worth thinking about?\" output: [{topic, reason, urgency}] 2. Filter by urgency threshold 3. For each topic above threshold: qwen2.5:14b #2 — research + synthesize Write structured note to Obsidian Log to `surfaced` table 4. Engagement checker (runs daily): For each surfaced topic in last 7 days: Check if topic appears in subsequent Obsidian notes or git commits Update surfaced.engaged = 1 if hit ``` --- ## 6. Obsidian Module ``` elvis/ modules/ obsidian.py read_vault() → walk vault, return notes with metadata write_note() → create note in /Elvis/ folder with tags get_recent_edits() → notes modified in last N days check_topic_appears() → search vault for topic keywords ``` Notes written by Elvis go into a dedicated `/Elvis/` folder in vault with frontmatter: ```yaml --- generated_by: elvis date: 2026-05-08 topic: ... signals: [calendar, git] --- ``` --- ## 7. Build Order 1. **Obsidian module** — read + write vault 2. **Ingestion layer** — pipe all 4 sources into `events` 3. **Raw embedder** — embed everything coming in 4. **Second brain loop v1** — no retrieval yet, just last 7 days raw → Haiku → Obsidian note 5. **Weekly summarizer** — add compression 6. **Retrieval layer** — plug into the loop 7. **Monthly summarizer** — add after weekly is stable 8. **Engagement checker** — passive feedback loop --- ## 8. sum shit i want a list of action items to be created by elvis and queue tasks with the correct context for elvis to perform sequentially without user interaction. For example: \"Focus on Helmet Detection System Setup\" Obsidian Note I want elvis to create a todolist with potential next steps for the plan (according to elvis's thoughts): 1. identify requirements (these keywords should pop up: 'standalone', 'outdoor', '1m tall', etc.) 2. identify hardware that fits requirements 3. create a table comparing hardware prices with links 4. draw circuit diagrams for connecting components 5. do sanity check",
+            "author": null,
+            "meta": "{\"tags\": [\"ideas\", \"secondbrain\"]}",
+            "source_ref": "Elvis/Elvis second brain plan.md::chunk_1",
+            "source": "obsidian"
+          },
+          {
+            "id": 86,
+            "timestamp": "2026-05-14 17:21:21",
+            "title": "Elvis second brain plan",
+            "content": "with potential next steps for the plan (according to elvis's thoughts): 1. identify requirements (these keywords should pop up: 'standalone', 'outdoor', '1m tall', etc.) 2. identify hardware that fits requirements 3. create a table comparing hardware prices with links 4. draw circuit diagrams for connecting components 5. do sanity check to make sure all components fit 6. draw out complete build steps with necessary details elvis needs to be able to create a todolist that mimics my example one as a minimum. execute the tasks on the todo sequentially correctly and output the results in a staging folder --- ## What You're NOT Building Yet - Custom ML ranker (need engagement data first) - Browser history ingestion (add later) - Screen time / HRV (add later) - Fine-tuned local model (revisit if API cost becomes real)",
+            "author": null,
+            "meta": "{\"tags\": [\"ideas\", \"secondbrain\"]}",
+            "source_ref": "Elvis/Elvis second brain plan.md::chunk_2",
+            "source": "obsidian"
+          },
+          {
+            "id": 43,
+            "timestamp": "2026-05-14 16:49:31",
+            "title": "2026-05-14-helmet-detection-system-setup",
+            "content": "## Helmet Detection System Setup **Signal:** Pun is focusing on setting up the helmet detection system in nearby areas. **Evidence:** (none from this week) **Historical context:** - [git] v8 trained on helmet detection - [todo] ถามเรื่องมี main มั้ยแถวนั้น helmet detection **Suggested next action:** Pun should reach out to the local authorities or relevant departments to discuss the installation of the helmet detection system in nearby areas.",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "elvis-surfaced/2026-05-14-helmet-detection-system-setup.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 48,
+            "timestamp": "2026-05-14 13:18:08",
+            "title": "2026-05-14-unified-vector-table-implementation",
+            "content": "## Unified Vector Table Implementation **Signal:** Migrated data and refined ingestion pipelines for seamless integration of the unified vector table. **Evidence:** - [git] migrated data - [git] fixed unified vectorstore **Historical context:** - [obsidian] # Sunday, 10 May 2026 ## 🎯 Top 3 Today - make unified vector table - [git] unified vector table **Suggested next action:** Review the performance of the unified vector table and adjust ingestion pipelines as needed.",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "elvis-surfaced/2026-05-14-unified-vector-table-implementation.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 69,
+            "timestamp": "2026-05-14 12:41:42",
+            "title": "2026-05-14",
+            "content": "# Thursday, 14 May 2026 ## 🎯 Top 3 Today - [ ] order aux cables and sim card - [ ] - [ ] --- ## 📝 Log _Running notes throughout the day_ - helmet detection need to wait for connect to main - dont poke holes yet verify the setup works first - cant test if D amp works needs 8-15V (tested with AAA battery) --- ## 🌙 End of Day **Carried over:** - [ ] **One thing to remember:** **Energy / mood:** /10",
+            "author": null,
+            "meta": "{\"tags\": [\"daily\", \"ideas\"]}",
+            "source_ref": "dailies/2026-05-14.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 285,
+            "timestamp": "2026-05-14 11:42:43",
+            "title": "Hardware",
+            "content": "RDK X5 - **85 mm × 56 mm × 20 mm** [[Junction Box]] - 4X4 inches: 101.6 mm x 101.6 mm - 6X6 inches: 152.4 mm x 152.4 mm Metal Pole - [[Speaker]] - Webcam USB 4G LTE Dongle ถามเรื่องมี main มั้ยแถวนั้น 220V wall outlet ↓ CCTV Power Box (12V/10A) ↓ C1 -> 12V buck converter (the two screws on the barrel jack side) -> usb-a to usb-c RDKX5 └── USB: Webcam └── USB: 4G modem C2 -> class D-amp (solder to underneath the board directly under the barrel jack) -> speaker ## Claude responded: That's a standard DC barrel jack footprint — the 3 pins in a triangle are: That's a standard **DC barrel jack** footprint — the 3 pins in a triangle are: - **Center pin** → positive (tip, usually +12V) - **Two outer pins** → both ground (sleeve), they're internally connected So you still only have 2 electrical nodes. Just solder: - C2 signal → center pin - C2 ground → either outer pin",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "Helmet Detection System/Hardware.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 126,
+            "timestamp": "2026-05-12T16:29:29+07:00",
+            "title": "ingestion loops for obsidian, git, gmail, todolist. updated ui to include weekly summaries",
+            "content": "ingestion loops for obsidian, git, gmail, todolist. updated ui to include weekly summaries",
+            "author": "punmyidol <159275509+punmyidol@users.noreply.github.com>",
+            "meta": null,
+            "source_ref": "git/elvis/bac7630b374d25784602637c0ffbcb29180494d2",
+            "source": "git"
+          },
+          {
+            "id": 127,
+            "timestamp": "2026-05-11T21:48:16+07:00",
+            "title": "migrated data",
+            "content": "migrated data",
+            "author": "punmyidol <159275509+punmyidol@users.noreply.github.com>",
+            "meta": null,
+            "source_ref": "git/elvis/4cab5a87b365e7434817840fc8cf7f597830779d",
+            "source": "git"
+          },
+          {
+            "id": 65,
+            "timestamp": "2026-05-11 22:57:39",
+            "title": "2026-05-11",
+            "content": "# Monday, 11 May 2026 ## 🎯 Top 3 Today - [ ] physics exam - [ ] - [ ] --- ## 📝 Log _Running notes throughout the day_ - 98 rows total in events (unified table): - obsidian: 83 - calendar: 10 - todo: 5 - email: 0 (pending Gmail re-auth) - migrated data into unified vector table - added git log ingest loop with APScheduler --- ## 🌙 End of Day **Carried over:** - [ ] **One thing to remember:** **Energy / mood:** /10",
+            "author": null,
+            "meta": "{\"tags\": [\"daily\", \"ideas\"]}",
+            "source_ref": "dailies/2026-05-11.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 19,
+            "timestamp": "2026-05-11 11:00:35",
+            "title": "Quantum Physics",
+            "content": "### Photon - packet of energy - of electromagnetic radiation ### Photoelectric Effect - emission of electrons - when electromagnetic radiation is incident on surface",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "A-level/Physics/Quantum Physics.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 18,
+            "timestamp": "2026-05-11 09:42:07",
+            "title": "Oscillations",
+            "content": "### Damping - loss of energy due to resistive forces",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "A-level/Physics/Oscillations.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 21,
+            "timestamp": "2026-05-11 07:52:32",
+            "title": "Magnetic Fields",
+            "content": "### Lenz law of electromagnetic induction - direction of induced emf - such as to opposite the change that caused it ### Faraday’s Law of electromagnetic induction - induced emf is directly proportional to rate - of change of magnetic flux",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "A-level/Physics/Magnetic Fields.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 128,
+            "timestamp": "2026-05-10T17:46:36+07:00",
+            "title": "unified vector table",
+            "content": "unified vector table",
+            "author": "punmyidol <159275509+punmyidol@users.noreply.github.com>",
+            "meta": null,
+            "source_ref": "git/elvis/26f7fb8a777d1a25ac336a54234b60e7b7793ba8",
+            "source": "git"
+          },
+          {
+            "id": 15,
+            "timestamp": "2026-05-10 21:58:30",
+            "title": "Medical Physics",
+            "content": "### Ultrasound - piezo-electric crystal change shape when alternating p.d. is applied across - piezo-electric crystals emit ultrasound - ultrasound reflects from body parts - ultrasound waves cause crystals to vibrate - crystals generates e.m.f when shape change ### Acoustic Impedance - product of density and speed - **Z = pc** - if similar Z means none of ultrasound is reflected - therefore cannot see boundaries between body parts ### Attenuation of waves in matter - I=I_0​e^−μx ### Tracer - Radioactive substance introduced into the body - Substance absorbed by tissues being studied - Used in PET Scan ### PET Scan - Positrons collides with electron in body - annihilation results in their masses becoming energy - gamma-ray photon pairs are created ### X-ray - structure scanned in thin sections - many scans of each section taken from different angles - scanning repeated for all sections and data compiled to form 3D image",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "A-level/Physics/Medical Physics.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 22,
+            "timestamp": "2026-05-10 21:40:26",
+            "title": "Formulae",
+            "content": "[[Gravitational Fields]] [[Ideal gases]] pV=nRT=NkT, R=8.31 ,k=1.38x10^-23 U=3/2NkT pV=1/3Nm<c^2> W=pV U=q+W [[Oscillations]] [[Electric Field]] [[Magnetic Fields]] [[Alternating Current]] [[Quantum Physics]] [[Nuclear Physics]] [[Medical Physics]] [[Astronomy and Cosmology]]",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "A-level/Physics/Formulae.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 17,
+            "timestamp": "2026-05-10 21:32:44",
+            "title": "Ideal gases",
+            "content": "Same temperature = same kinetic energy ### Assumptions of an ideal gas - Molecules have **no volume** (point particles) - **No intermolecular forces** (except during collisions) - Collisions are **perfectly elastic** - Collisions are instantaneous - Molecules are in **random motion** ### Internal Energy U = 3/2nRT - Internal energy is sum of kinetic and potential energy - where potential energy = 0 - +W compression/work done on system so U+W - -W expansion/work done by system so U-W - W=p(delta V)",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "A-level/Physics/Ideal gases.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 23,
+            "timestamp": "2026-05-10 21:16:13",
+            "title": "Nuclear Physics",
+            "content": "### Mass Defect - difference between mass of nucleus and mass of constituent nucleons - when nucleons are separated to infinity Conservation of mass-energy E=mc^2 1 atomic mass unit (u) = 1.66x10^-27 kg ### Activity - Number of nuclear decays per unit time decay constant λ = ln2/t",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "A-level/Physics/Nuclear Physics.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 16,
+            "timestamp": "2026-05-10 20:57:59",
+            "title": "Astronomy and Cosmology",
+            "content": "### Luminosity - Total power of radiation emitted by the star ### Wien's displacement law - λmax​=b/T, b = 2.898x10^-3 - emission rates - T is thermodynamic temperature of surface of star - wavelength is wavelength at which maximum emission rate from star occurs ### Wavelength & Temperature all objects emit electromagnetic waves temperature is related to wavelength with Wien's displacement law for the sun ~5778K wavelength *peaks* in the yellow section of visible light for hotter suns >30 000K wavelength peaks in the blue section of visible light if an object is hot enough it can emit gamma rays but needs to be very hot ### Redshift 1. recession of galaxies causes emitted light to have increased observed wavelength 2. distant galaxies show redshift so galaxies are moving apart 3. galaxies are moving apart means space is expanding ### Doppler's Redshift - Actual wavelength is in the center of star - v/c = Δλ​/λ​ ### Hubble's Law - v = H_0d - more distant galaxies represent further back in time - long time ago, all matter in the universe must have been close together bro measured the redshift for distant planet measured distance to distant planet did it many times plot on graph bro got straight line with hubble_constant gradient 1/hubble_constant is the age of the universe proves big bang theory because 1/hubble_constant = age of oldest known stars proves big bang theory because if turn back time to the point when 1/hubble_constant then everything will be together ### Stefan-Boltzmann Law L=4piσr^2T^4 σ=5.67×10^-8",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "A-level/Physics/Astronomy and Cosmology.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 20,
+            "timestamp": "2026-05-10 17:24:03",
+            "title": "Gravitational Fields",
+            "content": "Two Body system: $$T = 2\\pi\\sqrt{\\frac{a^3}{GM}}$$ - Long as r1+r2 AND m1+m2 stays the same period doesnt change",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "A-level/Physics/Gravitational Fields.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 70,
+            "timestamp": "2026-05-10 11:53:18",
+            "title": "2026-05-10",
+            "content": "# Sunday, 10 May 2026 ## 🎯 Top 3 Today - [ ] make unified vector table - [ ] - [ ] --- ## 📝 Log _Running notes throughout the day_ - obsidian table wasnt combined - git source type not created yet (no ingest logic) - todo source type not created yet - calendar table is still not embedded - goodnotes doesnt exist - gmail - in the unified vectorstore drop news and documents (News and Documents both write to doc_vec_items/doc_vec_metadata (the legacy per-type tables), so they share the same embedding space with no source_type discriminator) --- ## 🌙 End of Day **Carried over:** - [ ] **One thing to remember:** **Energy / mood:** /10",
+            "author": null,
+            "meta": "{\"tags\": [\"daily\", \"ideas\"]}",
+            "source_ref": "dailies/2026-05-10.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 129,
+            "timestamp": "2026-05-09T18:08:49+07:00",
+            "title": "fixed unified vectorstore",
+            "content": "fixed unified vectorstore",
+            "author": "punmyidol <159275509+punmyidol@users.noreply.github.com>",
+            "meta": null,
+            "source_ref": "git/elvis/67398b4eefb5c237b647af8921cc738aa49dbdf5",
+            "source": "git"
+          },
+          {
+            "id": 130,
+            "timestamp": "2026-05-09T17:34:02+07:00",
+            "title": "plan.md parts 1-3 done",
+            "content": "plan.md parts 1-3 done",
+            "author": "punmyidol <159275509+punmyidol@users.noreply.github.com>",
+            "meta": null,
+            "source_ref": "git/elvis/768697e28762847326ffa0a4d520d506b056d64d",
+            "source": "git"
+          },
+          {
+            "id": 131,
+            "timestamp": "2026-05-09T14:41:21+07:00",
+            "title": "obsidian module updates",
+            "content": "obsidian module updates",
+            "author": "punmyidol <159275509+punmyidol@users.noreply.github.com>",
+            "meta": null,
+            "source_ref": "git/elvis/3a0fdf8f7123bf39cee4661fd41f08b288962954",
+            "source": "git"
+          },
+          {
+            "id": 132,
+            "timestamp": "2026-05-09T11:00:08+07:00",
+            "title": "added get_recent_edits and bug fixes",
+            "content": "added get_recent_edits and bug fixes",
+            "author": "punmyidol <159275509+punmyidol@users.noreply.github.com>",
+            "meta": null,
+            "source_ref": "git/elvis/2f0cfd2b1e39bc485941b17e00c468883bad021f",
+            "source": "git"
+          },
+          {
+            "id": 77,
+            "timestamp": "2026-05-09 18:34:41",
+            "title": "chagee",
+            "content": "1/2 กา 500g ชา 11g น้ำชา 500ml นม 16.7 tsp น้ำเชื่อม 16.7 tsp 200ml นม 35g น้ำเชื่อม 40g https://th.shp.ee/HJ48R3TP หลอดที่ดู๋ที่สุด",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "notes/chagee.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 90,
+            "timestamp": "2026-05-09 16:46:14",
+            "title": "Plan.md",
+            "content": "# Applied Plans: Unified Vector Store --- ## Plan A: How Elvis Decides `source_type` ### Problem `source_type` is currently an implicit contract — callers of `upsert_vector()` pass a string and nothing enforces correctness. After unification, a wrong `source_type` silently writes to the shared pool with no type-level safety and no routing logic. ### Solution: Enum + Ingest-Side Assignment `source_type` is always assigned at ingest, never at query time. Each ingestion path owns its own type — the LLM and agent tools never decide it. ```python # chatbot/agent/vector_store.py from enum import Enum class SourceType(str, Enum): DOC = \"doc\" EMAIL = \"email\" MEMORY = \"memory\" NEWS = \"news\" OBSIDIAN = \"obsidian\" ``` **Assignment rules — one owner per type:** |`source_type`|Set by|Never set by| |---|---|---| |`doc`|`services/documents.py` on write|agent, tools| |`email`|`gmail-module/fetch.py` on ingest|agent, tools| |`memory`|`agent/memory.py` on save|agent, tools| |`news`|`ingest_rss.py` on ingest|agent, tools| |`obsidian`|`services/obsidian.py` watchdog|agent, tools| **Chunked types** (auto-chunked on upsert): `doc`, `obsidian` **Single-vector types** (one vector per item): `email`, `memory`, `news` `upsert_vector()` validates the enum at call time. Because `SourceType` is a `str` enum, passing a valid string like `\"doc\"` does not raise on its own — only unknown strings do. To get hard enforcement regardless of caller, coerce explicitly inside `upsert_vector()`: ```python def upsert_vector( source_id: str, source_type: SourceType, content: str, ... ): source_type = SourceType(source_type) # raises ValueError on unknown strings ... ``` This is necessary because existing callers like `ingest_rss.py` pass plain strings (`source_type=\"news\"`). The annotation alone does not enforce anything at runtime in Python. **At search time**, the agent tool decides which `source_types` to include based on the tool's domain — not the query content: ```python # tools.py @tool def search_documents(query: str) -> str: return search_similar(query, source_types=[SourceType.DOC]) @tool def search_gmail(query: str) -> str: return search_similar(query, source_types=[SourceType.EMAIL]) @tool def search_vault(query: str) -> str: return search_similar(query, source_types=[SourceType.OBSIDIAN]) # second brain loop only — not an agent tool def retrieve_context(query: str) -> str: return search_similar(query, source_types=[SourceType.OBSIDIAN, SourceType.NEWS, SourceType.DOC]) ``` The LLM never selects a `source_type`. It selects a **tool**. The tool hardcodes the type. **Note on `retrieve_context()` consumers:** This function is used by both the second brain loop and `check_topic_appears()`. Neither is an agent tool. Do not lock down its signature based on loop-only assumptions — `check_topic_appears()` needs to pass an `after=` datetime filter through it (see Plan C). --- ## Plan B: Gmail Module Rewire ### Current State `gmail-module/` is a fully standalone module: - Has its own `config.py`, `store.py`, `auth.py`, `fetch.py` -",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "Elvis/Plan.md.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 91,
+            "timestamp": "2026-05-09 16:46:14",
+            "title": "Plan.md",
+            "content": "tool. Do not lock down its signature based on loop-only assumptions — `check_topic_appears()` needs to pass an `after=` datetime filter through it (see Plan C). --- ## Plan B: Gmail Module Rewire ### Current State `gmail-module/` is a fully standalone module: - Has its own `config.py`, `store.py`, `auth.py`, `fetch.py` - Writes directly to `email_vec_items` / `email_vec_metadata` tables - `chatbot/services/gmail.py` bridges to it via `sys.path.insert` hack - `search_emails()` returns `EmailRecord` dataclass, not the shared result tuple ### Target State `gmail-module/fetch.py` writes into the unified `vec_items` / `vec_metadata` tables via `upsert_vector()`. `gmail-module/store.py` is deleted. `chatbot/services/gmail.py` calls `search_similar()` directly. ### Changes **1. `gmail-module/fetch.py`** — replace `upsert_email()` with `upsert_vector()`. The current code calls `clear_emails()` before batch upsert to remove emails deleted from Gmail. This full-replace pattern must be preserved — otherwise the unified table accumulates stale emails indefinitely. Replicate it against `vec_metadata`: ```python # Before from store import EmailRecord, init_email_tables, upsert_email, clear_emails clear_emails() upsert_email(EmailRecord(message_id=..., subject=..., ...)) # After import sys, os sys.path.insert(0, os.path.join(os.path.dirname(__file__), \"../chatbot\")) from agent.vector_store import upsert_vector, SourceType import sqlite3 from core.config import DB_PATH from email.utils import parsedate_to_datetime # Clear all existing email vectors before re-ingesting with sqlite3.connect(DB_PATH) as conn: rows = conn.execute( \"SELECT rowid FROM vec_metadata WHERE source_type = 'email'\" ).fetchall() for (rowid,) in rows: conn.execute(\"DELETE FROM vec_items WHERE rowid = ?\", (rowid,)) conn.execute(\"DELETE FROM vec_metadata WHERE source_type = 'email'\") conn.commit() # Parse RFC 2822 date to ISO before storing try: content_date = parsedate_to_datetime(raw_date).isoformat() except Exception: content_date = datetime.now().isoformat() embed_content = f\"Subject: {subject}\\nFrom: {sender}\\n\\n{body}\" upsert_vector( source_id=f\"email/{msg_id}\", source_type=SourceType.EMAIL, content=embed_content, member_id=\"shared\", title=subject, author=sender, content_date=content_date, # explicit — do not rely on DEFAULT CURRENT_TIMESTAMP ) ``` > **Date format issue:** The Gmail API returns `Date` as an RFC 2822 string (e.g. `\"Mon, 06 May 2026 14:23:11 +0700\"`). The unified schema uses ISO 8601 for `created_at`. If the raw string is stored as-is and `get_recent_raw()` does `WHERE created_at >= ?` with an ISO cutoff, SQLite string comparison silently returns wrong results — no error is raised. Always parse with `email.utils.parsedate_to_datetime` and call `.isoformat()` before insert. `upsert_vector()` must accept a `content_date` parameter and use it in place of `CURRENT_TIMESTAMP` (see Plan C). **2. `chatbot/services/gmail.py`** — replace `sys.path` bridge with direct vector call. `list_gmail_logic()` currently calls `list_emails()` from the deleted `store.py` — it must be rewritten to query `vec_metadata` directly: ```python # Before sys.path.insert(0, \"../../gmail-module\") from store import search_emails, list_emails # After from agent.vector_store import search_similar, SourceType from core.config import DB_PATH, VECTOR_TOP_K import sqlite3 def search_gmail_logic(query: str, top_k:",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "Elvis/Plan.md.md::chunk_1",
+            "source": "obsidian"
+          },
+          {
+            "id": 92,
+            "timestamp": "2026-05-09 16:46:14",
+            "title": "Plan.md",
+            "content": "bridge with direct vector call. `list_gmail_logic()` currently calls `list_emails()` from the deleted `store.py` — it must be rewritten to query `vec_metadata` directly: ```python # Before sys.path.insert(0, \"../../gmail-module\") from store import search_emails, list_emails # After from agent.vector_store import search_similar, SourceType from core.config import DB_PATH, VECTOR_TOP_K import sqlite3 def search_gmail_logic(query: str, top_k: int = VECTOR_TOP_K) -> str: results = search_similar(query, source_types=[SourceType.EMAIL], top_k=top_k) if not results: return \"No relevant emails found.\" parts = [content[:800] for _, _, content, _ in results] return \"\\n\\n---\\n\\n\".join(parts) def list_gmail_logic() -> str: with sqlite3.connect(DB_PATH) as conn: rows = conn.execute(\"\"\" SELECT source_id, title, author, created_at FROM vec_metadata WHERE source_type = 'email' ORDER BY created_at DESC \"\"\").fetchall() if not rows: return \"No emails stored. Run gmail-module/fetch.py first.\" return \"\\n\".join( f\"[{row[3][:10]}] {row[1] or '(no subject)'} — from {row[2] or 'unknown'}\" for row in rows ) ``` **3. Delete `gmail-module/store.py`** — all its responsibilities move to `vector_store.py` **4. `gmail-module/config.py`** — remove `DB_PATH`, `EMBED_MODEL`, `EMBED_DIM`; keep only Gmail API constants (`INBOX_MAX`, OAuth scopes, credentials path) **5. Migration step** — run once to drop old tables: ```sql DROP TABLE IF EXISTS email_vec_items; DROP TABLE IF EXISTS email_vec_metadata; ``` ### What Stays in `gmail-module/` `auth.py` and `fetch.py` (minus the store import). The module's job is OAuth + Gmail API. Storage is no longer its concern. --- ## Plan C: Dual Retrieval Path — Recent Raw + KNN for History ### Problem KNN has no recency bias. A semantically close but 3-month-old Obsidian note will outscore a weakly related note written this morning. For a daily assistant, recent context should always surface regardless of semantic score. ### Solution: Two Explicit Paths in `retrieve_context()` ``` retrieve_context(query) ├── Path 1: RECENT — last N days, pulled directly from vec_metadata by created_at │ no embedding, no KNN, always included, capped at MAX_RECENT rows └── Path 2: HISTORY — KNN over vec_metadata WHERE created_at < cutoff top_k chunks, semantic match only, excludes recent_ids ``` Both paths are assembled and deduplicated before returning. ### Implementation ```python # chatbot/agent/vector_store.py RECENCY_DAYS = 7 # tuneable — inject everything inside this window HISTORY_TOP_K = 8 # KNN results from outside the window MAX_RECENT = 20 # hard cap — prevents context flood from active vaults def get_recent_raw( source_types: list[SourceType], member_id: str | None = None, days: int = RECENCY_DAYS, max_recent: int = MAX_RECENT, db_path: str = DB_PATH, ) -> list[tuple[str, str, str, float]]: \"\"\" Return the most recent vec_metadata rows within the last N",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "Elvis/Plan.md.md::chunk_2",
+            "source": "obsidian"
+          },
+          {
+            "id": 93,
+            "timestamp": "2026-05-09 16:46:14",
+            "title": "Plan.md",
+            "content": "20 # hard cap — prevents context flood from active vaults def get_recent_raw( source_types: list[SourceType], member_id: str | None = None, days: int = RECENCY_DAYS, max_recent: int = MAX_RECENT, db_path: str = DB_PATH, ) -> list[tuple[str, str, str, float]]: \"\"\" Return the most recent vec_metadata rows within the last N days. No embedding call. Distance set to 0.0 (always relevant by recency). Capped at max_recent rows ordered by created_at DESC. \"\"\" cutoff = (datetime.now() - timedelta(days=days)).isoformat() type_placeholders = \",\".join(\"?\" * len(source_types)) params = [t.value for t in source_types] + [cutoff] if member_id: params.append(member_id) with sqlite3.connect(db_path) as conn: rows = conn.execute(f\"\"\" SELECT source_id, source_type, content FROM vec_metadata WHERE source_type IN ({type_placeholders}) AND created_at >= ? {\"AND (member_id = ? OR member_id = 'shared')\" if member_id else \"\"} ORDER BY created_at DESC LIMIT ? \"\"\", params + [max_recent]).fetchall() return [(sid, stype, content, 0.0) for sid, stype, content in rows] def _knn_search( query: str, source_types: list[SourceType], member_id: str | None, top_k: int, exclude_ids: set[str], created_before: datetime, db_path: str, ) -> list[tuple[str, str, str, float]]: \"\"\" KNN search restricted to content older than created_before. exclude_ids (the recent set) are filtered out in Python after over-fetching. created_before is applied as a Python post-filter on the created_at column. \"\"\" vector = embed_text(query) packed = _pack(vector) # Over-fetch to compensate for all post-filters: # source_type, member_id, exclude_ids, created_before — all applied in Python. # With a unified pool across 5 source types, the old multiplier of 4x is insufficient. # Start at 10x and tune by logging fetch_n vs final result count after migration. fetch_n = max(top_k * 10, top_k + len(exclude_ids) * 2) cutoff_str = created_before.isoformat() with sqlite3.connect(db_path) as conn: conn.enable_load_extension(True) sqlite_vec.load(conn) conn.enable_load_extension(False) rows = conn.execute(\"\"\" SELECT m.source_id, m.source_type, m.content, m.member_id, m.created_at, v.distance FROM vec_items v JOIN vec_metadata m ON v.rowid = m.rowid WHERE v.embedding MATCH ? AND k = ? ORDER BY v.distance \"\"\", (packed, fetch_n)).fetchall() results = [] valid_types = {t.value for t in source_types} for sid, stype, content, mid, created_at, dist in rows: if stype not in valid_types: continue if member_id and mid != member_id and mid != \"shared\": continue if sid in exclude_ids: continue if created_at and created_at >= cutoff_str: continue # only return content older than the recency cutoff results.append((sid, stype, content, dist)) if len(results) >= top_k: break return results def retrieve_context( query: str, source_types: list[SourceType] | None = None, member_id: str | None = None, recency_days: int = RECENCY_DAYS, history_top_k:",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "Elvis/Plan.md.md::chunk_3",
+            "source": "obsidian"
+          },
+          {
+            "id": 94,
+            "timestamp": "2026-05-09 16:46:14",
+            "title": "Plan.md",
+            "content": "exclude_ids: continue if created_at and created_at >= cutoff_str: continue # only return content older than the recency cutoff results.append((sid, stype, content, dist)) if len(results) >= top_k: break return results def retrieve_context( query: str, source_types: list[SourceType] | None = None, member_id: str | None = None, recency_days: int = RECENCY_DAYS, history_top_k: int = HISTORY_TOP_K, after: datetime | None = None, db_path: str = DB_PATH, ) -> list[tuple[str, str, str, float]]: \"\"\" Two-path retrieval: - recent: most recent rows within recency_days, capped at MAX_RECENT - history: KNN search scoped to content older than recency_days Returns combined, deduplicated list. Recent results appear first. `after` allows check_topic_appears() to restrict results to post-surfacing activity only — pass the surfaced.created_at datetime here. \"\"\" types = source_types or list(SourceType) cutoff = after or (datetime.now() - timedelta(days=recency_days)) recent = get_recent_raw(types, member_id, recency_days, db_path=db_path) recent_ids = {r[0] for r in recent} history = _knn_search( query=query, source_types=types, member_id=member_id, top_k=history_top_k, exclude_ids=recent_ids, created_before=cutoff, db_path=db_path, ) return recent + history ``` ### Per-Tool Behaviour Agent tools that are query-driven (user asks a question right now) use `search_similar()` directly — they don't need the dual-path split because the user's question is already the recency signal. `retrieve_context()` is for **proactive, non-query-driven** callers only: ``` search_vault(query) → search_similar(), source_types=[OBSIDIAN] search_gmail(query) → search_similar(), source_types=[EMAIL] second_brain_loop() → retrieve_context(), source_types=[OBSIDIAN, DOC, EMAIL] check_topic_appears() → retrieve_context(after=surfaced_at, source_types=[OBSIDIAN]) ``` ### News Retrieval in the Second Brain Loop News has a dual-store inconsistency: `news_cache` retains articles for 7 days, but the recency window proposed for news in `vec_metadata` was 1 day — meaning days 2–7 of articles would fall into the KNN history path while `news_cache` still has them directly. **Resolution:** The second brain loop reads news from `news_cache` directly, not through `retrieve_context()`. Remove `SourceType.NEWS` from the loop's `source_types`. The vector path for news exists only for agent tool semantic search (`get_news` / `search_news_semantic`). |Source|Used in `retrieve_context()`|Why| |---|---|---| |`obsidian`|yes|primary long-term knowledge| |`email`|yes|signals recent communications| |`doc`|yes|reference documents| |`news`|**no** — loop reads `news_cache` directly|avoids dual-store inconsistency| |`memory`|no — injected separately into system prompt|always present, not retrieved| ### `created_at` Accuracy `vec_metadata.created_at` defaults to `CURRENT_TIMESTAMP` (ingest time). For emails, an old message re-fetched today gets `created_at = today`, making it appear recent. For Obsidian notes, the vault's `mtime` is the correct timestamp. Each ingest path must pass an explicit `content_date` that overrides the default: |Source|Correct `created_at` value| |---|---| |`email`|RFC 2822 `Date` header, parsed to ISO (see Plan B)| |`obsidian`|vault file `mtime`| |`news`|`fetched_date` from `news_cache` row| |`doc`|file",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "Elvis/Plan.md.md::chunk_4",
+            "source": "obsidian"
+          },
+          {
+            "id": 95,
+            "timestamp": "2026-05-09 16:46:14",
+            "title": "Plan.md",
+            "content": "= today`, making it appear recent. For Obsidian notes, the vault's `mtime` is the correct timestamp. Each ingest path must pass an explicit `content_date` that overrides the default: |Source|Correct `created_at` value| |---|---| |`email`|RFC 2822 `Date` header, parsed to ISO (see Plan B)| |`obsidian`|vault file `mtime`| |`news`|`fetched_date` from `news_cache` row| |`doc`|file `mtime`| |`memory`|`datetime.now()` at save time — ingest time is correct here| `upsert_vector()` must accept `content_date: str | None` and pass it to the INSERT: ```python created_at_val = content_date or datetime.now().isoformat() conn.execute( \"INSERT INTO vec_metadata (source_id, source_type, member_id, content, created_at, ...)\" \" VALUES (?, ?, ?, ?, ?, ...)\", (uid, source_type.value, member_id, content, created_at_val, ...) ) ``` Do not use `DEFAULT CURRENT_TIMESTAMP` for any source type where content_date is known. --- ## Plan D: Preserve Deduplication on Chunk Upsert ### Problem The unified schema has `UNIQUE(source_id)` on `vec_metadata`. But chunked sources (`doc`, `obsidian`) use `source_id = \"vault/note.md::chunk_0\"` — each chunk is a separate row. The unique constraint applies per-chunk, not per-note. This means: - If a note is re-indexed without a prior delete, new chunks are inserted alongside old ones with the same base path but different chunk indices (if content grew) - Old chunks that no longer exist (note shrank) are orphaned in both `vec_metadata` and `vec_items` - The `UNIQUE` constraint only prevents exact `source_id` duplicates — it does not prevent stale chunk accumulation ### Solution: Embed First, Then Delete + Insert Atomically Embeddings are slow (~200–500ms per chunk via Ollama). The naive approach opens one connection, deletes stale chunks, then embeds inside the same connection — holding a write lock for the entire embed duration and blocking APScheduler jobs (news refresh, calendar sync). **Fix: compute all embeddings before touching the DB, then open one short-lived connection for the delete + insert batch:** ```python CHUNKED_TYPES = {SourceType.DOC, SourceType.OBSIDIAN} def _delete_chunks(conn, base_source_id: str): \"\"\" Delete all vec_items + vec_metadata rows for a base source_id. Called inside an already-open connection after embeddings are computed. \"\"\" rows = conn.execute( \"SELECT rowid FROM vec_metadata WHERE source_id LIKE ?\", (base_source_id + \"::%\",), ).fetchall() for (rowid,) in rows: conn.execute(\"DELETE FROM vec_items WHERE rowid = ?\", (rowid,)) conn.execute( \"DELETE FROM vec_metadata WHERE source_id LIKE ?\", (base_source_id + \"::%\",), ) if rows: print(f\"[VectorStore] Deleted {len(rows)} stale chunk(s) for '{base_source_id}'\") def upsert_vector( source_id: str, source_type: SourceType, content: str, member_id: str = \"shared\", content_date: str | None = None, db_path: str = DB_PATH, **kwargs, ) -> int: source_type = SourceType(source_type)",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "Elvis/Plan.md.md::chunk_5",
+            "source": "obsidian"
+          },
+          {
+            "id": 96,
+            "timestamp": "2026-05-09 16:46:14",
+            "title": "Plan.md",
+            "content": "conn.execute( \"DELETE FROM vec_metadata WHERE source_id LIKE ?\", (base_source_id + \"::%\",), ) if rows: print(f\"[VectorStore] Deleted {len(rows)} stale chunk(s) for '{base_source_id}'\") def upsert_vector( source_id: str, source_type: SourceType, content: str, member_id: str = \"shared\", content_date: str | None = None, db_path: str = DB_PATH, **kwargs, ) -> int: source_type = SourceType(source_type) is_chunked = source_type in CHUNKED_TYPES chunks = _chunk_text(content) if is_chunked else [content] uids = [f\"{source_id}::chunk_{i}\" for i in range(len(chunks))] if is_chunked else [source_id] # Phase 1: embed all chunks — outside the DB connection packed_chunks = [] for uid, chunk in zip(uids, chunks): try: vector = embed_text(chunk) packed_chunks.append((uid, chunk, _pack(vector))) except Exception as e: print(f\"[VectorStore] Embedding failed for '{uid}': {e}\") if not packed_chunks: return 0 # Phase 2: open connection, delete stale, insert new — as short as possible with sqlite3.connect(db_path) as conn: conn.enable_load_extension(True) sqlite_vec.load(conn) conn.enable_load_extension(False) if is_chunked: _delete_chunks(conn, source_id) stored = 0 for uid, chunk, packed in packed_chunks: _upsert_one(conn, uid, chunk, source_type, member_id, packed, content_date=content_date, **kwargs) stored += 1 conn.commit() return stored ``` ### Why Pre-Delete, Not UNIQUE Conflict Resolution - `ON CONFLICT(source_id) DO UPDATE` only handles exact ID matches — it cannot remove chunks that no longer exist in a re-indexed note - A note that shrinks from 6 chunks to 3 would leave chunks 3–5 as orphans under any upsert-only strategy - Pre-delete is O(n_old_chunks) — acceptable since re-indexing is triggered by file change events, not on every read ### Visibility Gap During Re-index Between `_delete_chunks()` completing and the new inserts committing, the note has no vectors in the index. A concurrent `search_similar()` call in this window will miss the note entirely. For a single-user local assistant this is low-risk, but the watchdog fires on every save event — active editing creates repeated delete/re-index cycles. Accepted as-is. If it becomes observable, the mitigation is to insert new chunks under temporary IDs first, then delete old ones and rename atomically — not warranted at this stage. ### Watchdog Integration (Obsidian) The debounced watchdog in `services/obsidian.py` calls `upsert_vector()` on every detected vault change. The embed-first pattern keeps the DB lock duration minimal — Ollama calls complete before the connection opens. ``` file modified → debounce 30s → upsert_vector(source_id=\"vault/path.md\", ...) → embed all chunks (no DB connection open) → open connection → _delete_chunks() # fast — DB-only, no network → insert new batch → commit + close ```",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "Elvis/Plan.md.md::chunk_6",
+            "source": "obsidian"
+          },
+          {
+            "id": 89,
+            "timestamp": "2026-05-09 14:53:21",
+            "title": "Elvis Architecture",
+            "content": "Vectorstore structure ```markdown vector_store/ ├── collection: \"personal_notes\" # your Obsidian notes ├── collection: \"cadquery_docs\" # CadQuery API reference ├── collection: \"elvis_memory\" # conversation memory └── collection: \"web_search_cache\" # cached Tavily results (optional) ``` ### Vector Collections (Database Schema) | Collection | What it is | | | ---------------- | --------------------------------- | --- | | `doc_vec_*` | General documents you've embedded | | | `email_vec_*` | Emails (Gmail MCP integration) | | | `memory_vec_*` | Conversation memory | | | `news_vec_*` | News articles | | | `obsidian_vec_*` | Your Obsidian notes vault | | ### Relational Data | Table | What it is | | -------------------- | ------------------------------------ | | `memory` | Raw conversation memory (non-vector) | | `calendar_cache` | Cached calendar events | | `web_search_cache` | Cached Tavily search results | | `family_members` | People Elvis knows about | | `member_profiles` | Detailed profiles per person | | `member_news_topics` | News topics tracked per person | | `vault_index_meta` | Obsidian vault indexing metadata | | `checkpoints` | LangGraph state checkpoints | | `writes` | LangGraph writes table | *Obsidian -> Personal Notes, School Notes, Todolist (stuff to do without specific dates) Documents Folder -> Sheets, csv, anything that cant be written in .md format Calendar -> Tasks that have specific start and end dates* Directory structure Failure Modes Minimal Test Cases Context Window Budget",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "Elvis/Elvis Architecture.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 62,
+            "timestamp": "2026-05-08 19:54:32",
+            "title": "2026-05-08",
+            "content": "# Friday, 8 May 2026 ## 🎯 Top 3 Today - [x] analyze bio med major for future replacable by ai? - [ ] - [ ] --- ## 📝 Log _Running notes throughout the day_ - fine-tune qwen2.5 on **Core datasets:** - **Tool call traces** — (query → search call → fetch call → response) trajectories with correct JSON formatting. This is the most important one. Synthetic generation from a bigger model works fine here. - **Reading comprehension + synthesis** — multi-doc QA datasets (NaturalQuestions, HotpotQA, MultiHop). Teaches it to pull answers across sources. - **Citation/attribution** — examples where the model correctly attributes claims to sources rather than hallucinating. Hard to find clean datasets for this, likely need to generate synthetically. --- ## 🌙 End of Day **Carried over:** - [ ] fine-tune qwen2.5 **One thing to remember:** **Energy / mood:** /10",
+            "author": null,
+            "meta": "{\"tags\": [\"daily\", \"ideas\"]}",
+            "source_ref": "dailies/2026-05-08.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 57,
+            "timestamp": "2026-05-08 17:09:47",
+            "title": "2026-05-02",
+            "content": "# Saturday, 2 May 2026 ## 🎯 Top 3 Today - [ ] 3 Mechanics Papers - [x] Order the stuff in shopping list - [ ] --- ## 📝 Log _Running notes throughout the day_ - doing EDA on Kplus data - spent 400k using kbank - --- ## 🌙 End of Day **Carried over:** - [ ] order stuff on shopping list **One thing to remember:** use card 100 off **Energy / mood:** /10",
+            "author": null,
+            "meta": "{\"tags\": [\"daily\", \"ideas\"]}",
+            "source_ref": "dailies/2026-05-02.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 64,
+            "timestamp": "2026-05-08 17:09:44",
+            "title": "2026-05-01",
+            "content": "# Friday, 1 May 2026 ## 🎯 Top 3 Today - [ ] Beat Radahn - [x] Finish Astrophysics - [x] buy stuff on shopping list --- ## 📝 Log _Running notes throughout the day_ - two camera setup - calibrate 3D grid in room for 3D design --- ## 🌙 End of Day **Carried over:** - [ ] **One thing to remember:** design the thing **Energy / mood:** /10",
+            "author": null,
+            "meta": "{\"tags\": [\"daily\", \"ideas\"]}",
+            "source_ref": "dailies/2026-05-01.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 54,
+            "timestamp": "2026-05-08 16:55:44",
+            "title": "2026-05-07",
+            "content": "# Thursday, 7 May 2026 ## 🎯 Top 3 Today - [ ] find potential majors for Pang - [ ] - [ ] --- ## 📝 Log _Running notes throughout the day_ - science olympiad (bio, chem, physics) - uni lab internship - job shadowing - science fair projects - AMC, TIMO, AIME - Bio eng club? - nine go back nakhon si thammarat 1 jun ## Question List **Problem-solving style:** - Given a problem you've never seen, do you figure it out faster by breaking it into steps, or by pattern-matching to something familiar? - When you get a wrong answer, do you recheck your method or recheck your arithmetic first? **Speed vs depth:** - Do you finish exams early or use all the time? - Do you prefer many short problems or one long problem? **Abstract vs concrete:** - Do you find it easier to understand something with a formula or with a real-world example? **Memory vs reasoning:** - In subjects you do well in, is it because you remember things well or because you can derive things on the spot? **Spatial reasoning:** - Can you visualize 3D objects rotating in your head easily? **Debugging tendency:** - When something doesn't work, do you find looking for the error satisfying or frustrating? ## Pang robot project scaleup - put in innovation comps and pitch where it matters (google science fair) - *distinction* - adaptive personality - commercialize product - deploy with actual rehab patients - make timeline --- ## 🌙 End of Day **Carried over:** - [ ] **One thing to remember:** **Energy / mood:** /10",
+            "author": null,
+            "meta": "{\"tags\": [\"daily\", \"ideas\"]}",
+            "source_ref": "dailies/2026-05-07.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 59,
+            "timestamp": "2026-05-08 16:55:40",
+            "title": "2026-05-06",
+            "content": "# Wednesday, 6 May 2026 ## 🎯 Top 3 Today - [x] Pure Mechanics - [x] Thinking agent - [ ] --- ## 📝 Log _Running notes throughout the day_ - thinking agent havin --- ## 🌙 End of Day **Carried over:** - [ ] **One thing to remember:** **Energy / mood:** /10",
+            "author": null,
+            "meta": "{\"tags\": [\"daily\", \"ideas\"]}",
+            "source_ref": "dailies/2026-05-06.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 74,
+            "timestamp": "2026-05-08 01:10:21",
+            "title": "Pang",
+            "content": "These qualities don’t shine through by being stated — they shine through by being demonstrated. No application should say “I have deep curiosity.” The evidence makes the reader conclude it themselves. Here’s how each quality gets demonstrated: Depth of immersion One project sustained over 3+ years with documented evolution. Not many projects — one that went deep. The robot project serves this perfectly if she sticks with it. The application reader sees G8 prototype → G9 deployment → G10 clinical partnership → G11 publication/competition. That arc proves immersion without claiming it. Follow-through curiosity Show the rabbit holes. In essays, mention the specific thing she read after the first thing, and what that led to. “I read about Paro, which led me to research attachment theory in elderly patients, which led me to contact Dr. X at Siriraj Hospital.” Chains of inquiry are visible proof. Adaptive problem-solving Describe a specific moment the project failed and what she did. Not generically — the exact failure, the exact pivot, the exact outcome. Admissions readers are trained to spot vague problem-solving claims. Specificity is the proof. Goal-anchored persistence The piano competition is already a perfect example. Name the competition, the piece, the difficulty, the result. Then connect it explicitly to how she works — she needs targets, so she sets them deliberately. That’s self-awareness, not weakness. People-impact orientation Name a specific person the robot helped. One real human with a real story. Not “users reported improvement.” One person, what their situation was, what changed. That single story carries more weight than any statistic. Comfort with long timelines This shows through the project timeline itself. A student who started something in G8 and is still developing it in G11 doesn’t need to claim patience. The dates prove it. Pressure aversion Don’t hide this — reframe it. “I do my best work when I have autonomy over pacing, so I structure my projects with self-imposed milestones rather than waiting for external deadlines.” That’s maturity and self-knowledge, not a red flag. Solo orientation The club leadership reframes this perfectly. She works best alone but learned to direct others toward a shared goal. That’s a more sophisticated leadership story than someone who naturally loves collaboration. The one rule across all of it Every claim needs one specific concrete example behind it. Admissions essays fail when they describe qualities. They succeed when they show a moment and let the",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "notes/Pang.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 75,
+            "timestamp": "2026-05-08 01:10:21",
+            "title": "Pang",
+            "content": "others toward a shared goal. That’s a more sophisticated leadership story than someone who naturally loves collaboration. The one rule across all of it Every claim needs one specific concrete example behind it. Admissions essays fail when they describe qualities. They succeed when they show a moment and let the reader name the quality themselves. Want me to draft what the core application essay narrative could look like given everything we know about her?​​​​​​​​​​​​​​​​ ### inception story - คุณย่า volunteer at a rehab org first aid/cpr certification blog? ig? to document project Build and donate. The club builds simple assistive devices — not the full robot, something scoped and completable like a basic grip aid or a communication board — and donates working devices to a specific organization. Output is tangible and measurable. Document patient stories. With permission, record and publish short video or written stories of people living with disability or in rehabilitation in Thailand. Not inspiration porn — genuine human stories that humanize the clinical problem. This builds the empathy evidence while producing something real. Run a workshop for younger students teaching basic assistive technology concepts. Hands-on, build something simple. Output is measurable — number of students reached, what they built. The filter Whatever the club does should produce something that exists after the activity ends. An event disappears. A resource, a device, a documented story, a relationship — those persist and compound.",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "notes/Pang.md::chunk_1",
+            "source": "obsidian"
+          },
+          {
+            "id": 133,
+            "timestamp": "2026-05-07T16:57:40+07:00",
+            "title": "alot of stuff",
+            "content": "alot of stuff",
+            "author": "punmyidol <159275509+punmyidol@users.noreply.github.com>",
+            "meta": null,
+            "source_ref": "git/elvis/f0fb3dc4ee93253b2bb29124494a24542cab5fe3",
+            "source": "git"
+          },
+          {
+            "id": 2,
+            "timestamp": "2026-05-06 09:16:16",
+            "title": "Roblox game idea",
+            "content": "## Tung Tung Simulator ## Sell Shirt ##",
+            "author": null,
+            "meta": "{\"tags\": []}",
+            "source_ref": "Roblox game idea.md::chunk_0",
+            "source": "obsidian"
+          },
+          {
+            "id": 66,
+            "timestamp": "2026-05-05 22:32:32",
+            "title": "2026-05-05",
+            "content": "# Tuesday, 5 May 2026 ## 🎯 Top 3 Today - [ ] - [ ] - [ ] --- ## 📝 Log _Running notes throughout the day_ - tried changing elvis memory to use mem0 repo https://github.com/mem0ai/mem0 - make gmail summary in typescript - important gmails only in tsx - provide full context email in the tsx - and keep in memory so can answer questions ### New agent - Thinking Agent - takes an idea in obsidian (helmet detection project) or a prompt - layer 1 - makes an overview generates action tasks (find what items to buy, research on models, along with actionables that user needs to do) - **if layer one detects very ambiguous input reprompt the user - layer 2 - adversarial model critiques and find flaws in the action tasks and find ways to address them - layer 3 - passes to task agent (search links, consult obsidian etc.) and returns as files put in vector table - layer 4 - info verification. verify links as actual facts to prevent hallucination (using task agent or new verification agent) - layer 5 - generate summary as a checkpoint after every thinking loop which can be used to present findings to user or resume - user reviews after layer 5 then injects input decides to do 2nd pass or stop if satisfied - each think session generates its own vector table that can be searched and referenced - if user input is required it waits until user prompts it - user can input their ideas at any time and ideas are added when first layer runs - deliverable task to gen files stay in elvis db until user approval but can be previewed in tsx --- ## 🌙 End of Day **Carried over:** - [ ] alr teach forces n equilibrium start from linear motion graphs n shi - [ ] when teach ask jir to send hard questions into grp **One thing to remember:** **Energy / mood:** /10",
+            "author": null,
+            "meta": "{\"tags\": [\"daily\", \"ideas\"]}",
+            "source_ref": "dailies/2026-05-05.md::chunk_0",
+            "source": "obsidian"
+          }
+        ],
+        "engaged_history": [
+          {
+            "id": 37,
+            "topic": "Automatic Water Gardening Project Initiation",
+            "reason": "Pun began planning and researching components for an automatic water gardening project, including valves and irrigation controllers.",
+            "created_at": "2026-05-18 02:12:51"
+          },
+          {
+            "id": 35,
+            "topic": "Second Brain Loop Development Progress",
+            "reason": "Continued development of second brain loop with updated UI and ingestion logic for multiple sources.",
+            "created_at": "2026-05-17 03:59:21"
+          },
+          {
+            "id": 34,
+            "topic": "US Visa Application Form Started",
+            "reason": "Started the US visa application process on embassy website.",
+            "created_at": "2026-05-17 03:56:09"
+          },
+          {
+            "id": 20,
+            "topic": "Helmet Detection System Setup",
+            "reason": "Active development on a YOLO-based helmet detection system — plan hardware selection, circuit design, and build steps for a standalone outdoor unit approximately 1m tall.",
+            "created_at": "2026-05-15 03:51:22"
+          },
+          {
+            "id": 23,
+            "topic": "Helmet Detection System Setup",
+            "reason": "Building a standalone outdoor helmet detection unit with camera, speaker, cellular connectivity",
+            "created_at": "2026-05-15 03:51:22"
+          },
+          {
+            "id": 14,
+            "topic": "Elvis Second Brain Core System Development",
+            "reason": "Focus shifted to refining core system functionalities without integrating new features.",
+            "created_at": "2026-05-14 13:14:26"
+          },
+          {
+            "id": 12,
+            "topic": "University of Michigan Visa Documents Submission",
+            "reason": "Urgent reminder for required documents to avoid admission delays.",
+            "created_at": "2026-05-14 13:02:12"
+          },
+          {
+            "id": 7,
+            "topic": "Unified Vector Table Implementation",
+            "reason": "Migrated data and refined ingestion pipelines for seamless integration.",
+            "created_at": "2026-05-14 06:18:06"
+          }
+        ],
+        "completed_tasks": []
+      }
+    }
+  ]
+}

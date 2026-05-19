@@ -1,0 +1,38 @@
+{
+  "calendar_next_48h": [
+    {
+      "start_dt": "2026-05-20T09:00:00",
+      "title": "DS Final Exam",
+      "description": ""
+    },
+    {
+      "start_dt": "2026-05-21T00:00:00",
+      "title": "Micky BD",
+      "description": ""
+    }
+  ],
+  "raw_by_source": {
+    "git": [
+      {
+        "timestamp": "2026-05-18T11:00:00",
+        "title": "style: update button color in task-ui",
+        "content": "Changed primary button from blue to indigo to match design system.",
+        "author": "punmyidol",
+        "meta": "",
+        "source_ref": "git/aaa111"
+      }
+    ],
+    "obsidian": [
+      {
+        "timestamp": "2026-05-17T19:00:00",
+        "title": "Recipe — Tom Kha Gai",
+        "content": "Coconut milk, galangal, lemongrass, kaffir lime leaves. Simmer 20 min.",
+        "author": "pun",
+        "meta": "",
+        "source_ref": "obsidian/recipes/tom-kha-gai.md"
+      }
+    ]
+  },
+  "weeklies": [],
+  "recent_surfacings": []
+}

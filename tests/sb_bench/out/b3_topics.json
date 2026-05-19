@@ -1,0 +1,11 @@
+[
+  {
+    "topic": "Helmet detection progress",
+    "reason": "Bounding box logic added but false positives remain",
+    "history_query": "helmet detector bounding boxes",
+    "source_signals": [
+      "git",
+      "obsidian"
+    ]
+  }
+]

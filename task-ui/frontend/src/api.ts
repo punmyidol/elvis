@@ -242,3 +242,13 @@ export async function finishIntake(projectName: string, messages: string[]): Pro
   if (!res.ok) throw new Error(await res.text())
   return res.json()
 }
+
+export async function* runAlignTimeline(projectName: string): AsyncGenerator<BuildPlanEvent> {
+  const res = await fetch(`${BASE}/intake/align-timeline`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project_name: projectName }),
+  })
+  if (!res.ok) throw new Error(await res.text())
+  yield* _sseStream<BuildPlanEvent>(res)
+}

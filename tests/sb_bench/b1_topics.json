@@ -1,0 +1,8 @@
+[
+  {
+    "topic": "Helmet detection project stalled",
+    "reason": "No recent vault or git activity on the project despite previous work",
+    "history_query": "helmet detection ESP32-CAM raspberry pi",
+    "source_signals": ["obsidian", "git"]
+  }
+]
